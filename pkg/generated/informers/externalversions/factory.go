@@ -9,6 +9,7 @@ import (
 
 	versioned "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions/internalinterfaces"
+	neptuneplus "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions/neptuneplus"
 	systemautoscaler "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions/systemautoscaler"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -156,7 +157,12 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
+	Neptuneplus() neptuneplus.Interface
 	Systemautoscaler() systemautoscaler.Interface
+}
+
+func (f *sharedInformerFactory) Neptuneplus() neptuneplus.Interface {
+	return neptuneplus.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Systemautoscaler() systemautoscaler.Interface {

@@ -56,6 +56,7 @@ vet:
 manifests: controller-gen
 	@echo "generate CRDs manifests"
 	$(CONTROLLER_GEN) crd paths="./pkg/apis/systemautoscaler/..." crd:crdVersions={v1} output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd paths="./pkg/apis/neptuneplus/..." crd:crdVersions={1} output:crd:artifacts:config=config/crd/bases
 
 controller-gen:
 ifeq (, $(shell which controller-gen))

@@ -54,7 +54,7 @@ const (
 	tolerance             = 1.2
 )
 
-//computeReplica computes the number of replicas for a service, given the serviceLevelAgreement
+// computeReplica computes the number of replicas for a service, given the serviceLevelAgreement
 func (logic *HPALogic) computeReplica(sla *v1beta1.ServiceLevelAgreement, pods []*corev1.Pod, podscales []*v1beta1.PodScale, service *corev1.Service, metricClient metricsgetter.MetricGetter, curReplica int32) int32 {
 
 	minReplicas := sla.Spec.MinReplicas
@@ -149,7 +149,7 @@ func newCustomLogic(earlyStop bool, kubeClient kubernetes.Interface) *CustomLogi
 	}
 }
 
-//computeReplica computes the number of replicas for a service, given the serviceLevelAgreement
+// computeReplica computes the number of replicas for a service, given the serviceLevelAgreement
 func (logic *CustomLogic) computeReplica(sla *v1beta1.ServiceLevelAgreement, pods []*corev1.Pod, podscales []*v1beta1.PodScale, service *corev1.Service, metricClient metricsgetter.MetricGetter, curReplica int32) int32 {
 
 	minReplicas := sla.Spec.MinReplicas
