@@ -9,6 +9,7 @@ import (
 	metricsclient "k8s.io/metrics/pkg/client/custom_metrics"
 
 	"github.com/lterrac/system-autoscaler/pkg/informers"
+	"github.com/modern-go/concurrent"
 	"k8s.io/apimachinery/pkg/labels"
 
 	sainformers "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions"
@@ -96,6 +97,7 @@ var _ = BeforeSuite(func(done Done) {
 	By("starting channels")
 	recommenderOut = make(chan types.NodeScales, 100)
 	contentionManagerOut = make(chan types.NodeScales, 100)
+	depDagOut := *concurrent.NewMap()
 
 	By("instantiating recommender")
 	recommenderController = recommender.NewController(
@@ -104,6 +106,7 @@ var _ = BeforeSuite(func(done Done) {
 		metricClient,
 		informers,
 		recommenderOut,
+		&depDagOut,
 	)
 
 	By("instantiating pod resource updater")

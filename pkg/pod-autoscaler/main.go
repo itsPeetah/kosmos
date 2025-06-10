@@ -5,11 +5,13 @@ import (
 	"time"
 
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/dynamicmapper"
+	"github.com/modern-go/concurrent"
 
 	informers2 "github.com/lterrac/system-autoscaler/pkg/informers"
 
 	sainformers "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions"
 	cm "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/contention-manager"
+	dependencycontroller "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	resupd "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/pod-resource-updater"
 	"github.com/lterrac/system-autoscaler/pkg/podscale-controller/pkg/types"
@@ -75,12 +77,22 @@ func main() {
 		Service:               coreInformerFactory.Core().V1().Services(),
 		PodScale:              saInformerFactory.Systemautoscaler().V1beta1().PodScales(),
 		ServiceLevelAgreement: saInformerFactory.Systemautoscaler().V1beta1().ServiceLevelAgreements(),
+		DependencyGraph:       saInformerFactory.Neptuneplus().V1alpha1().DependencyGraphs(),
 	}
 
 	//TODO: should be renamed
 	//TODO: we should try without buffer
+	depDagOut := *concurrent.NewMap()
 	recommenderOut := make(chan types.NodeScales, 10000)
 	contentionManagerOut := make(chan types.NodeScales, 10000)
+
+	dependencyGraphController := dependencycontroller.NewController(
+		kubernetesClient,
+		client,
+		metricsGetter,
+		informers,
+		&depDagOut,
+	)
 
 	// TODO: adjust arguments to recommender
 	recommenderController := recommender.NewController(
@@ -89,6 +101,7 @@ func main() {
 		metricsGetter,
 		informers,
 		recommenderOut,
+		&depDagOut,
 	)
 
 	contentionManagerController := cm.NewController(
@@ -110,6 +123,11 @@ func main() {
 	// Start method is non-blocking and runs all registered safactory in a dedicated goroutine.
 	saInformerFactory.Start(stopCh)
 	coreInformerFactory.Start(stopCh)
+
+	if err = dependencyGraphController.Run(4, stopCh); err != nil {
+		klog.Fatalf("Error running dependency controller: %s", err.Error())
+	}
+	defer dependencyGraphController.Shutdown()
 
 	if err = recommenderController.Run(4, stopCh); err != nil {
 		klog.Fatalf("Error running recommender: %s", err.Error())

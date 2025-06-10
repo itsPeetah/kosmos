@@ -3,6 +3,7 @@ package v1alpha1
 // +kubebuilder:object:generate=true
 
 import (
+	sa "github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -12,9 +13,9 @@ type InvocationEdge struct {
 	// FunctionNamespace is the namespace of the invoked function
 	FunctionNamespace string `json:"functionNamespace"`
 	// Id of the invocation. Edges with the same id are invoked concurrently, different ids imply the invocations happen sequentially.
-	EdgeId int32 `json:"edgeId"`
+	EdgeId int `json:"edgeId"`
 	// Multiplier describes how many invocations to this function are performed by the caller function.
-	EdgeMultiplier int32 `json:"edgeMultiplier"`
+	EdgeMultiplier int `json:"edgeMultiplier"`
 }
 
 type FunctionNode struct {
@@ -73,3 +74,7 @@ type DependencyGraphList struct {
 
 	Items []DependencyGraph `json:"items"`
 }
+
+const (
+	DependencyAware sa.RecommendLogic = "dependencyAware"
+)
