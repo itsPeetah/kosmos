@@ -6,10 +6,12 @@ import (
 
 	"github.com/lterrac/system-autoscaler/pkg/informers"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
+	dependencycontroller "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
 	"k8s.io/apimachinery/pkg/labels"
 
+	nptypes "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
 	"github.com/lterrac/system-autoscaler/pkg/podscale-controller/pkg/types"
 	"github.com/modern-go/concurrent"
@@ -61,6 +63,9 @@ type Controller struct {
 
 	// out is the output channel of the recommender.
 	out chan types.NodeScales
+
+	// dependency status is the shared status of the dependency graph controller
+	dependencyStatus *dependencycontroller.SharedStatus
 }
 
 // Status represents the state of the controller
@@ -76,6 +81,7 @@ func NewController(
 	metricsClient metricsgetter.MetricGetter,
 	informers informers.Informers,
 	out chan types.NodeScales,
+	dependencyStatus *dependencycontroller.SharedStatus,
 ) *Controller {
 
 	// Create event broadcaster
@@ -103,6 +109,7 @@ func NewController(
 		MetricClient:        metricsClient,
 		recorder:            recorder,
 		out:                 out,
+		dependencyStatus:    dependencyStatus,
 	}
 
 	klog.Info("Setting up event handlers")
@@ -223,6 +230,12 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		return nil, err
 	}
 
+	// Retrieve the metrics
+	metrics, err := c.MetricClient.PodMetrics(pod, metrics.ResponseTime)
+	if err != nil {
+		return nil, fmt.Errorf("error: %s, failed to get metrics from pod with name %s and namespace %s from lister", err, pod.GetName(), pod.GetNamespace())
+	}
+
 	// Retrieve the logic
 	logicInterface, ok := c.status.logicMap.Load(key)
 	if !ok {
@@ -231,6 +244,9 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 			logicInterface = newFixedGainControlLogic(podScale)
 		case v1beta1.AdaptiveGainControl:
 			logicInterface = newAdaptiveGainControlLogic(podScale)
+		case nptypes.DependencyAware:
+			// I'm using fixed gain now because the algo doesn't really change
+			logicInterface = newFixedGainControlLogic(podScale)
 		default:
 			logicInterface = newFixedGainControlLogic(podScale)
 			//return nil, fmt.Errorf("illegal value %s as recommender logic", sla.Spec.RecommenderLogic)
@@ -242,14 +258,16 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		return nil, fmt.Errorf("error: %s, failed to cast logic with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
 	}
 
-	// Retrieve the metrics
-	metrics, err := c.MetricClient.PodMetrics(pod, metrics.ResponseTime)
-	if err != nil {
-		return nil, fmt.Errorf("error: %s, failed to get metrics from pod with name %s and namespace %s from lister", err, pod.GetName(), pod.GetNamespace())
+	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
+		lrtMilli := c.computeLocalResponseTimeMilli(podScale, metrics)
+		metrics.Value.SetMilli(lrtMilli)
 	}
 
 	// Compute the new resources
 	newPodScale, err := logic.computePodScale(pod, podScale, sla, metrics)
+	if err != nil {
+		return nil, fmt.Errorf("error: %s, failed to compute podscale with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
+	}
 
 	return newPodScale, nil
 }

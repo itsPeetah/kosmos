@@ -1,0 +1,144 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+  name: dependencygraphs.neptuneplus.polimi.it
+spec:
+  group: neptuneplus.polimi.it
+  names:
+    kind: DependencyGraph
+    listKind: DependencyGraphList
+    plural: dependencygraphs
+    singular: dependencygraph
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: DependencyGraph is the Schema for the dependencygraphs API.
+          properties:
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: DependencyGraphSpec defines the desired state of DependencyGraph.
+              properties:
+                nodes:
+                  description: Nodes represents the collection of nodes in the graph
+                  items:
+                    properties:
+                      functionName:
+                        description:
+                          FunctionName represents what function this node
+                          is assigned to and it is used as a selector for the pods running
+                          said function.
+                        type: string
+                      functionNamespace:
+                        description:
+                          FunctionNamespace is the namespace of the invoked
+                          function
+                        type: string
+                      invocations:
+                        description:
+                          Invocations is the list of out-edges from the node
+                          to invoked functions.
+                        items:
+                          properties:
+                            edgeId:
+                              description:
+                                Id of the invocation. Edges with the same
+                                id are invoked concurrently, different ids imply the
+                                invocations happen sequentially.
+                              format: int32
+                              type: integer
+                            edgeMultiplier:
+                              description:
+                                Multiplier describes how many invocations
+                                to this function are performed by the caller function.
+                              format: int32
+                              type: integer
+                            functionName:
+                              description:
+                                FunctionName is the name of the invoked function,
+                                used as a pod/service selector. It should match the
+                                function name in another node in the graph.
+                              type: string
+                            functionNamespace:
+                              description:
+                                FunctionNamespace is the namespace of the
+                                invoked function
+                              type: string
+                          required:
+                            - edgeId
+                            - edgeMultiplier
+                            - functionName
+                            - functionNamespace
+                          type: object
+                        type: array
+                      nominalResponseTime:
+                        anyOf:
+                          - type: integer
+                          - type: string
+                        description:
+                          Nominal Response Time is the response time recorded
+                          in the profiling phase
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                    required:
+                      - functionName
+                      - functionNamespace
+                      - invocations
+                      - nominalResponseTime
+                    type: object
+                  type: array
+              required:
+                - nodes
+              type: object
+            status:
+              description: DependencyGraphStatus defines the observed state of DependencyGraph.
+              properties:
+                nodes:
+                  items:
+                    properties:
+                      externalResponseTime:
+                        description:
+                          ExternalResponseTime is the aggregated metric describing
+                          the average response time of the function's dependencies
+                        format: int64
+                        type: integer
+                      functionName:
+                        description: FunctionName is the name of the function
+                        type: string
+                      functionNamespace:
+                        description: FunctionNamespace is the namespace of the function
+                        type: string
+                    required:
+                      - externalResponseTime
+                      - functionName
+                      - functionNamespace
+                    type: object
+                  type: array
+              required:
+                - nodes
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
