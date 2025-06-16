@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/dynamicmapper"
-	"github.com/modern-go/concurrent"
 
 	informers2 "github.com/lterrac/system-autoscaler/pkg/informers"
 
@@ -82,7 +81,6 @@ func main() {
 
 	//TODO: should be renamed
 	//TODO: we should try without buffer
-	depDagOut := *concurrent.NewMap()
 	recommenderOut := make(chan types.NodeScales, 10000)
 	contentionManagerOut := make(chan types.NodeScales, 10000)
 
@@ -91,7 +89,6 @@ func main() {
 		client,
 		metricsGetter,
 		informers,
-		&depDagOut,
 	)
 
 	// TODO: adjust arguments to recommender
@@ -101,7 +98,7 @@ func main() {
 		metricsGetter,
 		informers,
 		recommenderOut,
-		&depDagOut,
+		dependencyGraphController.SharedStatus,
 	)
 
 	contentionManagerController := cm.NewController(

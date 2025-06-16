@@ -6,6 +6,7 @@ import (
 
 	"github.com/lterrac/system-autoscaler/pkg/informers"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
+	dependencycontroller "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
 	"k8s.io/apimachinery/pkg/labels"
@@ -63,7 +64,8 @@ type Controller struct {
 	// out is the output channel of the recommender.
 	out chan types.NodeScales
 
-	extTimesIn *concurrent.Map
+	// dependency status is the shared status of the dependency graph controller
+	dependencyStatus *dependencycontroller.SharedStatus
 }
 
 // Status represents the state of the controller
@@ -79,7 +81,7 @@ func NewController(
 	metricsClient metricsgetter.MetricGetter,
 	informers informers.Informers,
 	out chan types.NodeScales,
-	externalTimes *concurrent.Map,
+	dependencyStatus *dependencycontroller.SharedStatus,
 ) *Controller {
 
 	// Create event broadcaster
@@ -107,7 +109,7 @@ func NewController(
 		MetricClient:        metricsClient,
 		recorder:            recorder,
 		out:                 out,
-		extTimesIn:          externalTimes,
+		dependencyStatus:    dependencyStatus,
 	}
 
 	klog.Info("Setting up event handlers")

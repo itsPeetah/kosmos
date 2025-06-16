@@ -29,26 +29,16 @@ type Controller struct {
 	customClientset generatedclientset.Interface
 	listers         informers.Listers
 	informersSynced cache.InformerSynced
-
 	// kubernetesCLientset is the client-go of kubernetes
 	kubernetesClientset kubernetes.Interface
-
 	// status represents the state of the controller
-	status *Status
-
+	status       *Status
+	SharedStatus *SharedStatus
 	// MetricClient is a client that polls the metrics from the pod.
-	MetricClient metricsgetter.MetricGetter
-
+	MetricClient     metricsgetter.MetricGetter
 	depdagsWorkQueue queue.Queue
-	out              *concurrent.Map
-
 	// recorder is an event recorder for recording Event resources to the Kubernetes API.
 	recorder record.EventRecorder
-}
-
-type Status struct {
-	// Key: namespace:name of the graph, Value: nodes, sorted leaves-to-root
-	graphMap concurrent.Map
 }
 
 func NewController(
@@ -56,7 +46,6 @@ func NewController(
 	podScalesClientset generatedclientset.Interface,
 	metricsClient metricsgetter.MetricGetter,
 	informers informers.Informers,
-	out *concurrent.Map,
 ) *Controller {
 
 	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
@@ -69,6 +58,10 @@ func NewController(
 	status := &Status{
 		graphMap: *concurrent.NewMap(),
 	}
+	shared := &SharedStatus{
+		ExternalResponseTimesMap: concurrent.NewMap(),
+		NominalResponseTimesMap:  concurrent.NewMap(),
+	}
 
 	// Instantiate the Controller
 	controller := &Controller{
@@ -78,8 +71,8 @@ func NewController(
 		kubernetesClientset: kubernetesClientset,
 		recorder:            recorder,
 		status:              status,
+		SharedStatus:        shared,
 		MetricClient:        metricsClient,
-		out:                 out,
 		depdagsWorkQueue:    queue.NewQueue("DependencyGraphsQueue"),
 	}
 

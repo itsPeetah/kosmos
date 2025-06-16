@@ -65,7 +65,7 @@ func (c *Controller) aggregateGraphTimes() {
 				// mark edge as already counted to avoid counting it multiple times for parallel invocations
 				avgEdgeRTs[edge.EdgeId] = 0
 			}
-			c.out.Store(node.FunctionNamespace+":"+node.FunctionName, sum)
+			c.SharedStatus.ExternalResponseTimesMap.Store(node.FunctionNamespace+":"+node.FunctionName, sum)
 			klog.Infof("[%s:%s] External response time for function: %d", node.FunctionNamespace, node.FunctionName, sum.MilliValue())
 		}
 

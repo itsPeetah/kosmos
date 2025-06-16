@@ -48,6 +48,11 @@ func (c *Controller) syncDependencyGraph(key string) error {
 	nodesSorted := sortNodesByDependencies(dag.DeepCopy().Spec.Nodes)
 	c.status.graphMap.Store(dagKey, nodesSorted)
 
+	// Store the nominal response times
+	for _, node := range dag.Spec.Nodes {
+		c.SharedStatus.NominalResponseTimesMap.Store(fmt.Sprintf("%s:%s", node.FunctionNamespace, node.FunctionName), node.NominalResponseTime)
+	}
+
 	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("Dependency graph %s synced successfully", dagKey))
 	return nil
 }

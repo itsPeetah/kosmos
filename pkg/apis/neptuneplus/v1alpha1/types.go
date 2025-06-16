@@ -4,6 +4,7 @@ package v1alpha1
 
 import (
 	sa "github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,6 +26,8 @@ type FunctionNode struct {
 	FunctionNamespace string `json:"functionNamespace"`
 	// Invocations is the list of out-edges from the node to invoked functions.
 	Invocations []InvocationEdge `json:"invocations"`
+	// Nominal Response Time is the response time recorded in the profiling phase
+	NominalResponseTime resource.Quantity `json:"nominalResponseTime"`
 }
 
 // DependencyGraphSpec defines the desired state of DependencyGraph.
@@ -44,7 +47,7 @@ type NodeStatus struct {
 
 // DependencyGraphStatus defines the observed state of DependencyGraph.
 type DependencyGraphStatus struct {
-	Nodes []NodeStatus `json:"nodes"`
+	// Nodes []NodeStatus `json:"nodes"`
 }
 
 // DependencyGraph is the Schema for the dependencygraphs API.

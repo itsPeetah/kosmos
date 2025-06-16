@@ -9,10 +9,10 @@ import (
 	metricsclient "k8s.io/metrics/pkg/client/custom_metrics"
 
 	"github.com/lterrac/system-autoscaler/pkg/informers"
-	"github.com/modern-go/concurrent"
 	"k8s.io/apimachinery/pkg/labels"
 
 	sainformers "github.com/lterrac/system-autoscaler/pkg/generated/informers/externalversions"
+	dependencycontroller "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	resupd "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/pod-resource-updater"
 	"github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/recommender"
@@ -50,6 +50,7 @@ var recommenderOut chan types.NodeScales
 var contentionManagerOut chan types.NodeScales
 var recommenderController *recommender.Controller
 var updaterController *resupd.Controller
+var depDagController *dependencycontroller.Controller
 
 const namespace = "e2e"
 const timeout = 10 * time.Second
@@ -97,7 +98,14 @@ var _ = BeforeSuite(func(done Done) {
 	By("starting channels")
 	recommenderOut = make(chan types.NodeScales, 100)
 	contentionManagerOut = make(chan types.NodeScales, 100)
-	depDagOut := *concurrent.NewMap()
+
+	By("starting depdag controller")
+	depDagController = dependencycontroller.NewController(
+		kubeClient,
+		saClient,
+		metricClient,
+		informers,
+	)
 
 	By("instantiating recommender")
 	recommenderController = recommender.NewController(
@@ -106,7 +114,7 @@ var _ = BeforeSuite(func(done Done) {
 		metricClient,
 		informers,
 		recommenderOut,
-		&depDagOut,
+		depDagController.SharedStatus,
 	)
 
 	By("instantiating pod resource updater")
