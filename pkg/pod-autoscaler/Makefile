@@ -1,7 +1,7 @@
 BUILD_SETTINGS = CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-IMAGE = pod-autoscaler
+IMAGE = np-pod-autoscaler
 IMAGE_VERSION = $(shell git tag --points-at HEAD | sed '/$(IMAGE)\/.*/!s/.*//' | sed 's/\//:/')
-REPO = systemautoscaler
+REPO = itspeetah
 
 .PHONY: all build coverage clean e2e fmt release test vet
 
