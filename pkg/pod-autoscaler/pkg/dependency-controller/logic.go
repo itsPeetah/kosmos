@@ -25,11 +25,14 @@ func (c *Controller) aggregateGraphTimes() {
 
 			svc, err := c.listers.Services(node.FunctionNamespace).Get(node.FunctionName)
 			if err != nil {
-				avgFunctionRTs[fmt.Sprintf("%s:%s", svc.Namespace, svc.Name)] = resource.NewMilliQuantity(0, resource.BinarySI)
+				avgFunctionRTs[fmt.Sprintf("%s:%s", node.FunctionNamespace, node.FunctionName)] = resource.NewMilliQuantity(0, resource.BinarySI)
+				klog.Errorf("Could not retrieve service for function %s:%s", node.FunctionNamespace, node.FunctionName)
 			}
 
 			metric, err := c.MetricClient.ServiceMetrics(svc, metrics.ResponseTime)
 			if err != nil {
+				klog.Errorf("Could not retrieve response time metrics for service %s:%s", node.FunctionNamespace, node.FunctionName)
+			} else {
 				avgFunctionRTs[fmt.Sprintf("%s:%s", svc.Namespace, svc.Name)] = &metric.Value
 			}
 		}

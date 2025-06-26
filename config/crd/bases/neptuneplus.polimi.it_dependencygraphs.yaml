@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.2
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: dependencygraphs.neptuneplus.polimi.it
 spec:
   group: neptuneplus.polimi.it
@@ -61,12 +61,10 @@ spec:
                             description: Id of the invocation. Edges with the same
                               id are invoked concurrently, different ids imply the
                               invocations happen sequentially.
-                            format: int32
                             type: integer
                           edgeMultiplier:
                             description: Multiplier describes how many invocations
                               to this function are performed by the caller function.
-                            format: int32
                             type: integer
                           functionName:
                             description: FunctionName is the name of the invoked function,
@@ -102,9 +100,8 @@ spec:
             required:
             - nodes
             type: object
-          status:
-            description: DependencyGraphStatus defines the observed state of DependencyGraph.
-            type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

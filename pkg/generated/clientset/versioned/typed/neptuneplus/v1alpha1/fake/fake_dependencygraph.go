@@ -86,18 +86,6 @@ func (c *FakeDependencyGraphs) Update(ctx context.Context, dependencyGraph *v1al
 	return obj.(*v1alpha1.DependencyGraph), err
 }
 
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeDependencyGraphs) UpdateStatus(ctx context.Context, dependencyGraph *v1alpha1.DependencyGraph, opts v1.UpdateOptions) (*v1alpha1.DependencyGraph, error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(dependencygraphsResource, "status", c.ns, dependencyGraph), &v1alpha1.DependencyGraph{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.DependencyGraph), err
-}
-
 // Delete takes name of the dependencyGraph and deletes it. Returns an error if one occurs.
 func (c *FakeDependencyGraphs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.

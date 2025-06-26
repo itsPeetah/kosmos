@@ -1,0 +1,63 @@
+apiVersion: openfaas.com/v1
+kind: Function
+metadata:
+  name: grime-numbers
+  namespace: openfaas-fn
+spec:
+  image: systemautoscaler/prime-numbers:dev
+  labels:
+    com.openfaas.scale.factor: "20"
+    com.openfaas.scale.max: "100"
+    com.openfaas.scale.min: "1"
+    com.openfaas.scale.zero: "false"
+    edgeautoscaler.polimi.it/scheduler: edge-autoscaler
+  name: grime-numbers
+  readOnlyRootFilesystem: false
+  limits:
+    cpu: "200m"
+    memory: "1000Mi"
+  requests:
+    cpu: "200m"
+    memory: "1000Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grime-numbers
+  labels:
+    name: grime-numbers
+  namespace: openfaas-fn
+spec:
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    edgeautoscaler.polimi.it/function-name: "grime-numbers"
+    edgeautoscaler.polimi.it/function-namespace: "openfaas-fn"
+  # topologyKeys:
+  #   - "kubernetes.io/hostname"
+  #   - "*"
+
+---
+apiVersion: systemautoscaler.polimi.it/v1beta1
+kind: ServiceLevelAgreement
+metadata:
+    name: grime-numbers
+    namespace: openfaas-fn
+spec:
+  metric:
+    responseTime: 100m
+  defaultResources:
+    cpu: "300m"
+    memory: "768Mi"
+  minResources:
+    memory: 10Mi
+    cpu: 300m
+  maxResources:
+    memory: 2048Mi
+    cpu: 20000m
+  service:
+    container: grime-numbers
+    selector:
+      matchLabels:
+        name: grime-numbers

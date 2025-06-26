@@ -63,7 +63,7 @@ type DependencyGraph struct {
 	// +kubebuilder:validation:Required
 	Spec DependencyGraphSpec `json:"spec,omitempty"`
 	// +kubebuilder:validation:Required
-	Status DependencyGraphStatus `json:"status,omitempty"`
+	// Status DependencyGraphStatus `json:"status,omitempty"`
 }
 
 // DependencyGraphList is a list of DependencyGraph

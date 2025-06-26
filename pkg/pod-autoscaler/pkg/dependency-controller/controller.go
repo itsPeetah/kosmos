@@ -89,7 +89,7 @@ func NewController(
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting recommender controller")
+	klog.Info("Starting dependency graph controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
@@ -97,7 +97,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	klog.Info("Starting recommender workers")
+	klog.Info("Starting dependency graph workers")
 	// Launch the workers to process dependency graph resources
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runWorkerSync, time.Second, stopCh)
@@ -105,7 +105,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// lunch worker for aggregating the times
 	go wait.Until(c.aggregateGraphTimes, 5*time.Second, stopCh)
-	klog.Info("Started recommender workers")
+	klog.Info("Started dependency graph workers")
 
 	return nil
 }
