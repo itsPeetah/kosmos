@@ -56,7 +56,7 @@ spec:
   maxResources:
     memory: 2048Mi
     cpu: 20000m
-  recommenderLogic: dependency_aware
+  recommenderLogic: dependencyAware
   service:
     container: crime-numbers
     selector:

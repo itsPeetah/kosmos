@@ -245,8 +245,8 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		case v1beta1.AdaptiveGainControl:
 			logicInterface = newAdaptiveGainControlLogic(podScale)
 		case nptypes.DependencyAware:
-			logicInterface = newFixedGainControlLogic(podScale) // I'm using fixed gain now because the algo doesn't really change
-			metrics = c.computeLocalResponseTime(podScale, metrics)
+			// I'm using fixed gain now because the algo doesn't really change
+			logicInterface = newFixedGainControlLogic(podScale)
 		default:
 			logicInterface = newFixedGainControlLogic(podScale)
 			//return nil, fmt.Errorf("illegal value %s as recommender logic", sla.Spec.RecommenderLogic)
@@ -256,6 +256,10 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 	logic, ok := logicInterface.(Logic)
 	if !ok {
 		return nil, fmt.Errorf("error: %s, failed to cast logic with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
+	}
+
+	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
+		metrics = c.computeLocalResponseTime(podScale, metrics)
 	}
 
 	// Compute the new resources

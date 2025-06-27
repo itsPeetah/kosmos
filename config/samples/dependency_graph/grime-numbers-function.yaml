@@ -56,6 +56,7 @@ spec:
   maxResources:
     memory: 2048Mi
     cpu: 20000m
+  recommenderLogic: dependencyAware
   service:
     container: grime-numbers
     selector:

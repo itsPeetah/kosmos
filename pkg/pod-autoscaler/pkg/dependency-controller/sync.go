@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 )
 
 // syncServiceLevelAgreement compares the actual SLA with the desired, and attempts to
@@ -18,8 +19,10 @@ func (c *Controller) syncDependencyGraph(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 
+	klog.Infof("[N+] Syncing dependency graph %s:%s", namespace, name)
+
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		utilruntime.HandleError(fmt.Errorf("[NP+] invalid resource key: %s", key))
 		return nil
 	}
 
@@ -38,14 +41,15 @@ func (c *Controller) syncDependencyGraph(key string) error {
 	for _, node := range dag.Spec.Nodes {
 		_, err := c.listers.Services(node.FunctionNamespace).Get(node.FunctionName)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error while getting service %s:%s tracked by Dependency Graph %s:%s", node.FunctionNamespace, node.FunctionName, namespace, name))
-			return nil
+			utilruntime.HandleError(fmt.Errorf("[NP+] error while getting service %s:%s tracked by Dependency Graph %s:%s", node.FunctionNamespace, node.FunctionName, namespace, name))
+			return err
 		}
 	}
 
 	// Store the nodes in the map (overwriting old ones if already present)
 	dagKey := fmt.Sprintf("%s:%s", namespace, name)
-	nodesSorted := sortNodesByDependencies(dag.DeepCopy().Spec.Nodes)
+
+	nodesSorted := sortNodesByDependencies(dag.Spec.Nodes)
 	c.status.graphMap.Store(dagKey, nodesSorted)
 
 	// Store the nominal response times
@@ -53,7 +57,7 @@ func (c *Controller) syncDependencyGraph(key string) error {
 		c.SharedStatus.NominalResponseTimesMap.Store(fmt.Sprintf("%s:%s", node.FunctionNamespace, node.FunctionName), node.NominalResponseTime)
 	}
 
-	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("Dependency graph %s synced successfully", dagKey))
+	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("[NP+] Dependency graph %s synced successfully", dagKey))
 	return nil
 }
 
