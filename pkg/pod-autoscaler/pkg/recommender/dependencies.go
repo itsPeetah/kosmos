@@ -1,14 +1,13 @@
 package recommender
 
 import (
-	"fmt"
-
 	"github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
+	dc "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 )
 
 func (c *Controller) computeLocalResponseTime(podScale *v1beta1.PodScale, responseTime *v1beta2.MetricValue) *v1beta2.MetricValue {
-	key := fmt.Sprintf("%s/%s", podScale.Namespace, podScale.Name)
+	key := dc.MakeNamespaceNameKey(podScale.Namespace, podScale.Spec.Service)
 
 	ert, _ := c.dependencyStatus.ExternalResponseTime(key)
 	nrt, _ := c.dependencyStatus.NominalResponseTime(key)

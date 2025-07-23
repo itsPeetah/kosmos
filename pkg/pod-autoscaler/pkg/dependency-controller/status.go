@@ -1,42 +1,50 @@
 package dependencycontroller
 
 import (
-	"github.com/modern-go/concurrent"
+	"context"
+
+	np "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog"
 )
 
-type SharedStatus struct {
-	// Key: namespace:name of the function, Value: computed external response time
-	ExternalResponseTimesMap *concurrent.Map
-	// Key: namespace:name of the function, Value: nominal response time as noted in the graph
-	NominalResponseTimesMap *concurrent.Map
-}
+func (c *Controller) updateGraphStatus(key string, nodes []np.FunctionNode) {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		klog.Error("[N+] Key couldn't be split in namespace/name pair")
+		return
+	}
 
-type Status struct {
-	// Key: namespace:name of the graph, Value: nodes, sorted leaves-to-root
-	graphMap concurrent.Map
-}
+	dag, err := c.listers.DependencyGraphs(namespace).Get(name)
+	if err != nil {
+		klog.Errorf("[N+] Could not find dependency graph %s:%s to update", namespace, name)
+		return
+	}
 
-func (ss *SharedStatus) ExternalResponseTime(key string) (resource.Quantity, bool) {
-	ert, ok := ss.ExternalResponseTimesMap.Load(key)
-	if !ok {
-		return *resource.NewMilliQuantity(0, resource.BinarySI), false
-	}
-	ertq, ok := ert.(resource.Quantity)
-	if !ok {
-		return *resource.NewMilliQuantity(0, resource.BinarySI), false
-	}
-	return ertq, true
-}
+	statusNodes := make([]np.NodeStatus, len(nodes))
+	for i, node := range nodes {
 
-func (ss *SharedStatus) NominalResponseTime(key string) (resource.Quantity, bool) {
-	nrt, ok := ss.ExternalResponseTimesMap.Load(key)
-	if !ok {
-		return *resource.NewMilliQuantity(0, resource.BinarySI), false
+		key := MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName)
+		ert, ok := c.SharedStatus.ExternalResponseTime(key)
+		if !ok {
+			ert = *resource.NewMilliQuantity(-1, resource.BinarySI)
+		}
+
+		statusNodes[i] = np.NodeStatus{
+			FunctionNamespace:    node.FunctionName,
+			FunctionName:         node.FunctionName,
+			ExternalResponseTime: ert.MilliValue(),
+		}
 	}
-	nrtq, ok := nrt.(resource.Quantity)
-	if !ok {
-		return *resource.NewMilliQuantity(0, resource.BinarySI), false
+
+	newDag := dag.DeepCopy()
+
+	newDag.Status.Nodes = statusNodes
+	_, err = c.customClientset.NeptuneplusV1alpha1().DependencyGraphs(namespace).UpdateStatus(context.TODO(), newDag, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Error(err)
+		return
 	}
-	return nrtq, true
 }

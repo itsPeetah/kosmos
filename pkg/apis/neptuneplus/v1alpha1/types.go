@@ -47,7 +47,7 @@ type NodeStatus struct {
 
 // DependencyGraphStatus defines the observed state of DependencyGraph.
 type DependencyGraphStatus struct {
-	// Nodes []NodeStatus `json:"nodes"`
+	Nodes []NodeStatus `json:"nodes"`
 }
 
 // DependencyGraph is the Schema for the dependencygraphs API.
@@ -63,7 +63,7 @@ type DependencyGraph struct {
 	// +kubebuilder:validation:Required
 	Spec DependencyGraphSpec `json:"spec,omitempty"`
 	// +kubebuilder:validation:Required
-	// Status DependencyGraphStatus `json:"status,omitempty"`
+	Status DependencyGraphStatus `json:"status,omitempty"`
 }
 
 // DependencyGraphList is a list of DependencyGraph

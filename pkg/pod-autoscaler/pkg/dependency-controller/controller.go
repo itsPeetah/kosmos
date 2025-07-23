@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"github.com/lterrac/system-autoscaler/pkg/informers"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
@@ -25,6 +26,12 @@ import (
 
 const controllerAgentName = "depdag-controller"
 
+/*
+
+TYPE DEFINITIONS + CONSTRUCTOR
+
+*/
+
 type Controller struct {
 	customClientset generatedclientset.Interface
 	listers         informers.Listers
@@ -41,6 +48,18 @@ type Controller struct {
 	recorder record.EventRecorder
 }
 
+type Status struct {
+	// Key: namespace:name of the graph, Value: nodes, sorted leaves-to-root
+	graphMap concurrent.Map
+}
+
+type SharedStatus struct {
+	// Key: namespace:name of the function, Value: computed external response time
+	ExternalResponseTimesMap *concurrent.Map
+	// Key: namespace:name of the function, Value: nominal response time as noted in the graph
+	NominalResponseTimesMap *concurrent.Map
+}
+
 func NewController(
 	kubernetesClientset kubernetes.Interface,
 	podScalesClientset generatedclientset.Interface,
@@ -49,7 +68,7 @@ func NewController(
 ) *Controller {
 
 	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
-	klog.V(4).Info("Creating event broadcaster")
+	klog.V(4).Info("[N+] Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
@@ -76,7 +95,7 @@ func NewController(
 		depdagsWorkQueue:    queue.NewQueue("DependencyGraphsQueue"),
 	}
 
-	klog.Info("Setting up event handlers")
+	klog.Info("[N+] Setting up event handlers")
 	informers.DependencyGraph.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.handleDependencyGraphAdd,
 		UpdateFunc: controller.handleDependencyGraphUpdate,
@@ -86,18 +105,24 @@ func NewController(
 	return controller
 }
 
+/*
+
+CONTROLLER METHODS
+
+*/
+
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting dependency graph controller")
+	klog.Info("[N+] Starting dependency graph controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
+	klog.Info("[N+] Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.informersSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	klog.Info("Starting dependency graph workers")
+	klog.Info("[N+] Starting dependency graph workers")
 	// Launch the workers to process dependency graph resources
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runWorkerSync, time.Second, stopCh)
@@ -105,6 +130,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// lunch worker for aggregating the times
 	go wait.Until(c.aggregateGraphTimes, 5*time.Second, stopCh)
+	go wait.Until(c.runGraphStatusSync, 2*time.Second, stopCh)
 	klog.Info("Started dependency graph workers")
 
 	return nil
@@ -113,6 +139,21 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 func (c *Controller) runWorkerSync() {
 	for c.depdagsWorkQueue.ProcessNextItem(c.syncDependencyGraph) {
 	}
+}
+
+func (c *Controller) runGraphStatusSync() {
+	c.status.graphMap.Range(func(key, value interface{}) bool {
+
+		keyAsStr, okKey := key.(string)
+		valueAsNodes, okValue := value.([]v1alpha1.FunctionNode)
+		if !okKey || !okValue {
+			klog.Error("[N+] Non-parsable key/value pair in graph map. This should never happen.")
+			return true // keep iterating
+		}
+
+		c.updateGraphStatus(keyAsStr, valueAsNodes)
+		return true
+	})
 }
 
 func (c *Controller) Shutdown() {

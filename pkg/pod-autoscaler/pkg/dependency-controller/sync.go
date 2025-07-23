@@ -5,7 +5,6 @@ package dependencycontroller
 import (
 	"fmt"
 
-	np "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -22,7 +21,7 @@ func (c *Controller) syncDependencyGraph(key string) error {
 	klog.Infof("[N+] Syncing dependency graph %s:%s", namespace, name)
 
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("[NP+] invalid resource key: %s", key))
+		utilruntime.HandleError(fmt.Errorf("[N+] invalid resource key: %s", key))
 		return nil
 	}
 
@@ -41,83 +40,22 @@ func (c *Controller) syncDependencyGraph(key string) error {
 	for _, node := range dag.Spec.Nodes {
 		_, err := c.listers.Services(node.FunctionNamespace).Get(node.FunctionName)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("[NP+] error while getting service %s:%s tracked by Dependency Graph %s:%s", node.FunctionNamespace, node.FunctionName, namespace, name))
+			utilruntime.HandleError(fmt.Errorf("[N+] error while getting service %s:%s tracked by Dependency Graph %s:%s", node.FunctionNamespace, node.FunctionName, namespace, name))
 			return err
 		}
 	}
 
 	// Store the nodes in the map (overwriting old ones if already present)
-	dagKey := fmt.Sprintf("%s:%s", namespace, name)
+	dagKey := MakeNamespaceNameKey(namespace, name)
 
 	nodesSorted := sortNodesByDependencies(dag.Spec.Nodes)
 	c.status.graphMap.Store(dagKey, nodesSorted)
 
 	// Store the nominal response times
 	for _, node := range dag.Spec.Nodes {
-		c.SharedStatus.NominalResponseTimesMap.Store(fmt.Sprintf("%s:%s", node.FunctionNamespace, node.FunctionName), node.NominalResponseTime)
+		c.SharedStatus.NominalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), node.NominalResponseTime)
 	}
 
-	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("[NP+] Dependency graph %s synced successfully", dagKey))
+	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("[N+] Dependency graph %s synced successfully", dagKey))
 	return nil
-}
-
-// I don't think this is particularly optimized, but it's not running often and the code that I got Gemini to generate for me was utter trash
-func sortNodesByDependencies(nodes []np.FunctionNode) []np.FunctionNode {
-
-	// NodeName -> NodeIndex
-	remainingNodeIndices := make(map[string]int)
-	for index, node := range nodes {
-		remainingNodeIndices[node.FunctionName] = index
-	}
-
-	calculateOutDegrees := func() map[string]int {
-		outDegrees := make(map[string]int)
-		// initialize at 0
-		for nodeName, indexInArray := range remainingNodeIndices {
-			node := nodes[indexInArray]
-			outDegrees[nodeName] = 0
-			// increase outdegree only if invoked node has not been "sorted" yet
-			for _, edge := range node.Invocations {
-				_, ok := remainingNodeIndices[edge.FunctionName]
-				if ok {
-					outDegrees[nodeName]++
-				}
-			}
-		}
-		return outDegrees
-	}
-
-	// Get "current" leaves (nodes with outdegree 0 in the current scenario, i.e. with already sorted nodes excluded from the pool)
-	getCurrentLeaves := func(outDegreeMap map[string]int) []string {
-		leaves := []string{}
-		for nodeName, degree := range outDegreeMap {
-			if degree == 0 {
-				leaves = append(leaves, nodeName)
-			}
-		}
-		return leaves
-	}
-
-	sortedNodes := []np.FunctionNode{}
-
-	iterations := 0 // just to make sure that I don't run into an infinite loop: there should never be more iterations than nodes
-	limit := len(nodes)
-	for len(sortedNodes) < limit && iterations <= limit {
-		outDegree := calculateOutDegrees()
-		leaves := getCurrentLeaves(outDegree)
-
-		for _, leafName := range leaves {
-			sortedNodes = append(sortedNodes, nodes[remainingNodeIndices[leafName]])
-			// remove current node from pool of nodes that still need to be sorted
-			delete(remainingNodeIndices, leafName)
-		}
-
-		iterations++
-	}
-
-	if len(sortedNodes) != len(nodes) {
-		return []np.FunctionNode{}
-	}
-
-	return sortedNodes
 }

@@ -15,14 +15,6 @@ func (c *Controller) aggregateGraphTimes() {
 
 	avgFunctionRTs := make(map[string]*resource.Quantity)
 
-	klog.Infof("\n\n\n\n\n\n\nAggregating graph times\n\n\n\n\n\n\n")
-
-	c.status.graphMap.Range(func(key, value interface{}) bool {
-
-		klog.Info("\n\n There's an item in the map")
-		return true
-	})
-
 	c.status.graphMap.Range(func(key, value interface{}) bool {
 		klog.Infof("[N+] Aggregating graph times for dependency graph %s", key)
 
@@ -36,21 +28,25 @@ func (c *Controller) aggregateGraphTimes() {
 		for _, node := range nodes {
 
 			metric, err := c.getServiceAverageResponseTime(node.FunctionNamespace, node.FunctionName)
+			key := MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName)
+
 			if err != nil {
 				klog.Errorf("[N+] Could not retrieve response time metrics for service %s:%s. %v", node.FunctionNamespace, node.FunctionName, err)
+				avgFunctionRTs[key] = &node.NominalResponseTime
 			} else {
-				avgFunctionRTs[fmt.Sprintf("%s:%s", node.FunctionNamespace, node.FunctionName)] = &metric.Value
+				avgFunctionRTs[key] = &metric.Value
 			}
+
 		}
 
-		// Aggregate times
 		avgEdgeRTs := make(map[int]int)
 		for _, node := range nodes {
 
+			// Aggregate times
 			for _, edge := range node.Invocations {
-				currFunctionEdgeValue, ok := avgFunctionRTs[edge.FunctionNamespace+":"+edge.FunctionName]
+				currFunctionEdgeValue, ok := avgFunctionRTs[MakeNamespaceNameKey(edge.FunctionNamespace, edge.FunctionName)]
 				if !ok {
-					currFunctionEdgeValue = resource.NewMilliQuantity(0, resource.BinarySI)
+					currFunctionEdgeValue = resource.NewMilliQuantity(0, resource.DecimalSI)
 				}
 
 				multed := int(currFunctionEdgeValue.MilliValue()) * edge.EdgeMultiplier
@@ -64,17 +60,14 @@ func (c *Controller) aggregateGraphTimes() {
 				}
 			}
 
-		}
-
-		// Calculate average external response time for every function
-		for _, node := range nodes {
-			sum := resource.NewMilliQuantity(0, resource.BinarySI)
+			// Calculate average external response time for every function
+			sum := resource.NewMilliQuantity(0, resource.DecimalSI)
 			for _, edge := range node.Invocations {
-				sum.Add(*resource.NewMilliQuantity(int64(avgEdgeRTs[edge.EdgeId]), resource.BinarySI))
-				// mark edge as already counted to avoid counting it multiple times for parallel invocations
+				sum.Add(*resource.NewMilliQuantity(int64(avgEdgeRTs[edge.EdgeId]), resource.DecimalSI))
 				avgEdgeRTs[edge.EdgeId] = 0
 			}
-			c.SharedStatus.ExternalResponseTimesMap.Store(node.FunctionNamespace+":"+node.FunctionName, sum)
+
+			c.SharedStatus.ExternalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), sum.DeepCopy())
 			klog.Infof("[N+] %s:%s - External response time for function: %d", node.FunctionNamespace, node.FunctionName, sum.MilliValue())
 		}
 
@@ -113,5 +106,4 @@ func (c *Controller) getServiceAverageResponseTime(namespace string, name string
 	}
 	average := float64(val) / float64(len(pods))
 	return &v1beta2.MetricValue{Value: *resource.NewMilliQuantity(int64(average), resource.DecimalSI)}, nil
-
 }
