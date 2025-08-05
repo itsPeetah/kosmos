@@ -4,7 +4,7 @@ metadata:
   name: crime-numbers
   namespace: openfaas-fn
 spec:
-  image: systemautoscaler/prime-numbers:dev
+  image: itspeetah/np-prime-numbers-go:latest
   labels:
     com.openfaas.scale.factor: "20"
     com.openfaas.scale.max: "100"

@@ -90,6 +90,7 @@ func main() {
 		metricsGetter,
 		informers,
 	)
+	depStatus := dependencyGraphController.Status
 
 	// TODO: adjust arguments to recommender
 	recommenderController := recommender.NewController(
@@ -98,7 +99,7 @@ func main() {
 		metricsGetter,
 		informers,
 		recommenderOut,
-		dependencyGraphController.SharedStatus,
+		depStatus,
 	)
 
 	contentionManagerController := cm.NewController(

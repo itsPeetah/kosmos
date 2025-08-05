@@ -4,7 +4,7 @@ metadata:
   name: grime-numbers
   namespace: openfaas-fn
 spec:
-  image: systemautoscaler/prime-numbers:dev
+  image: itspeetah/np-prime-numbers-go:latest
   labels:
     com.openfaas.scale.factor: "20"
     com.openfaas.scale.max: "100"
@@ -29,8 +29,8 @@ metadata:
   namespace: openfaas-fn
 spec:
   ports:
-  - port: 80
-    targetPort: 8000
+    - port: 80
+      targetPort: 8000
   selector:
     edgeautoscaler.polimi.it/function-name: "grime-numbers"
     edgeautoscaler.polimi.it/function-namespace: "openfaas-fn"
@@ -42,8 +42,8 @@ spec:
 apiVersion: systemautoscaler.polimi.it/v1beta1
 kind: ServiceLevelAgreement
 metadata:
-    name: grime-numbers
-    namespace: openfaas-fn
+  name: grime-numbers
+  namespace: openfaas-fn
 spec:
   metric:
     responseTime: 100m

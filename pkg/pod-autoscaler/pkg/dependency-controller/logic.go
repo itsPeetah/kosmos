@@ -3,75 +3,61 @@ package dependencycontroller
 import (
 	"fmt"
 
-	np "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
+	"github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 )
 
-func (c *Controller) aggregateGraphTimes() {
+func (c *Controller) aggregateGraphTimes(nodes []v1alpha1.FunctionNode) {
 
 	avgFunctionRTs := make(map[string]int64)
 
-	c.status.graphMap.Range(func(key, value interface{}) bool {
-		klog.Infof("[N+] Aggregating graph times for dependency graph %s", key)
+	// Get times for all services
+	for _, node := range nodes {
 
-		nodes, ok := value.([]np.FunctionNode)
-		if !ok {
-			klog.Errorf("[N+] Could not parse sorted nodes for graph %s", key)
-			return false
+		svcArt, err := c.getServiceAverageResponseTime(node.FunctionNamespace, node.FunctionName)
+		key := MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName)
+
+		if err != nil {
+			klog.Errorf("[N+] Could not retrieve response time metrics for service %s:%s. %v", node.FunctionNamespace, node.FunctionName, err)
+			avgFunctionRTs[key] = node.NominalResponseTime.MilliValue()
+		} else {
+			avgFunctionRTs[key] = svcArt
 		}
 
-		// Get times for all services
-		for _, node := range nodes {
+	}
 
-			svcArt, err := c.getServiceAverageResponseTime(node.FunctionNamespace, node.FunctionName)
-			key := MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName)
+	avgEdgeRTs := make(map[int]int64)
+	for _, node := range nodes {
 
-			if err != nil {
-				klog.Errorf("[N+] Could not retrieve response time metrics for service %s:%s. %v", node.FunctionNamespace, node.FunctionName, err)
-				avgFunctionRTs[key] = node.NominalResponseTime.MilliValue()
-			} else {
-				avgFunctionRTs[key] = svcArt
+		// Aggregate times
+		for _, edge := range node.Invocations {
+			currFunctionEdgeValue, ok := avgFunctionRTs[MakeNamespaceNameKey(edge.FunctionNamespace, edge.FunctionName)]
+			if !ok {
+				currFunctionEdgeValue = 0
 			}
 
+			multed := currFunctionEdgeValue * int64(edge.EdgeMultiplier)
+			if val, ok := avgEdgeRTs[edge.EdgeId]; !ok {
+				// This is either a sequential call or the first time we see a parallel call (therefore this is the slowest so far)
+				avgEdgeRTs[edge.EdgeId] = multed
+			} else if multed > val {
+				// This means the calls are sequential so take the slowest one
+				avgEdgeRTs[edge.EdgeId] = multed
+			}
 		}
 
-		avgEdgeRTs := make(map[int]int64)
-		for _, node := range nodes {
-
-			// Aggregate times
-			for _, edge := range node.Invocations {
-				currFunctionEdgeValue, ok := avgFunctionRTs[MakeNamespaceNameKey(edge.FunctionNamespace, edge.FunctionName)]
-				if !ok {
-					currFunctionEdgeValue = 0
-				}
-
-				multed := currFunctionEdgeValue * int64(edge.EdgeMultiplier)
-				if val, ok := avgEdgeRTs[edge.EdgeId]; ok {
-					if multed > val {
-						avgEdgeRTs[edge.EdgeId] = multed
-					}
-				} else {
-					// This is either a sequential call or the first time we see a parallel call (therefore this is the slowest so far)
-					avgEdgeRTs[edge.EdgeId] = multed
-				}
-			}
-
-			// Calculate average external response time for every function
-			sum := int64(0)
-			for _, edge := range node.Invocations {
-				sum += avgEdgeRTs[edge.EdgeId]
-				avgEdgeRTs[edge.EdgeId] = 0
-			}
-
-			c.SharedStatus.ExternalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), sum)
-			klog.Infof("[N+] %s:%s - External response time for function: %d", node.FunctionNamespace, node.FunctionName, sum)
+		// Calculate average external response time for every function
+		sum := int64(0)
+		for _, edge := range node.Invocations {
+			sum += avgEdgeRTs[edge.EdgeId]
+			avgEdgeRTs[edge.EdgeId] = 0
 		}
 
-		return true
-	})
-
+		c.Status.ExternalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), sum)
+		klog.Infof("[N+] %s:%s - External response time for function: %d", node.FunctionNamespace, node.FunctionName, sum)
+	}
 }
 
 func (c *Controller) getServiceAverageResponseTime(namespace string, name string) (int64, error) {

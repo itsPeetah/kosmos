@@ -4,34 +4,12 @@ import (
 	"fmt"
 
 	np "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
+	"k8s.io/klog/v2"
+	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 )
 
 func MakeNamespaceNameKey(namespace string, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
-}
-
-func (ss *SharedStatus) ExternalResponseTime(key string) (int64, bool) {
-	ert, ok := ss.ExternalResponseTimesMap.Load(key)
-	if !ok {
-		return 0, false
-	}
-	ertq, ok := ert.(int64)
-	if !ok {
-		return 0, false
-	}
-	return ertq, true
-}
-
-func (ss *SharedStatus) NominalResponseTime(key string) (int64, bool) {
-	nrt, ok := ss.NominalResponseTimesMap.Load(key)
-	if !ok {
-		return 0, false
-	}
-	nrtq, ok := nrt.(int64)
-	if !ok {
-		return 0, false
-	}
-	return nrtq, true
 }
 
 // I don't think this is particularly optimized, but it's not running often and the code that I got Gemini to generate for me was utter trash
@@ -93,4 +71,52 @@ func sortNodesByDependencies(nodes []np.FunctionNode) []np.FunctionNode {
 	}
 
 	return sortedNodes
+}
+
+func (s *Status) ExternalResponseTime(key string) (int64, bool) {
+	ert, ok := s.ExternalResponseTimesMap.Load(key)
+	if !ok {
+		return 0, false
+	}
+	ertq, ok := ert.(int64)
+	if !ok {
+		return 0, false
+	}
+	return ertq, true
+}
+
+func (s *Status) NominalResponseTime(key string) (int64, bool) {
+	nrt, ok := s.NominalResponseTimesMap.Load(key)
+	if !ok {
+		return 0, false
+	}
+	nrtq, ok := nrt.(int64)
+	if !ok {
+		return 0, false
+	}
+	return nrtq, true
+}
+
+func (s *Status) GetLocalResponseTimeMilli(functionNamespace string, functionName string, responseTime *v1beta2.MetricValue) int64 {
+	rt := responseTime.Value.MilliValue()
+
+	// this just catches the rt == 0 case, which happens when there's no requests
+	if rt <= 0 {
+		return rt
+	}
+
+	// local response time
+	key := MakeNamespaceNameKey(functionNamespace, functionName)
+	nrt, _ := s.NominalResponseTime(key)
+	ert, _ := s.ExternalResponseTime(key)
+	lrt := rt - ert
+
+	klog.Infof("[N+] Compute local response time (milli) for %s: rt=%d, nrt=%d, ert=%d, lrt=%d", functionName, rt, nrt, ert, lrt)
+
+	// avoid paradoxes
+	if lrt < nrt {
+		return nrt
+	}
+
+	return lrt
 }

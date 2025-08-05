@@ -114,7 +114,7 @@ var _ = BeforeSuite(func(done Done) {
 		metricClient,
 		informers,
 		recommenderOut,
-		depDagController.SharedStatus,
+		depDagController.Status,
 	)
 
 	By("instantiating pod resource updater")

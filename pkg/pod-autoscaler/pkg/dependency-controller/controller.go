@@ -39,8 +39,7 @@ type Controller struct {
 	// kubernetesCLientset is the client-go of kubernetes
 	kubernetesClientset kubernetes.Interface
 	// status represents the state of the controller
-	status       *Status
-	SharedStatus *SharedStatus
+	Status *Status
 	// MetricClient is a client that polls the metrics from the pod.
 	MetricClient     metricsgetter.MetricGetter
 	depdagsWorkQueue queue.Queue
@@ -50,10 +49,7 @@ type Controller struct {
 
 type Status struct {
 	// Key: namespace:name of the graph, Value: nodes, sorted leaves-to-root
-	graphMap concurrent.Map
-}
-
-type SharedStatus struct {
+	DependencyGraphs *concurrent.Map
 	// Key: namespace:name of the function, Value: computed external response time
 	ExternalResponseTimesMap *concurrent.Map
 	// Key: namespace:name of the function, Value: nominal response time as noted in the graph
@@ -75,9 +71,7 @@ func NewController(
 
 	// Create Controller status
 	status := &Status{
-		graphMap: *concurrent.NewMap(),
-	}
-	shared := &SharedStatus{
+		DependencyGraphs:         concurrent.NewMap(),
 		ExternalResponseTimesMap: concurrent.NewMap(),
 		NominalResponseTimesMap:  concurrent.NewMap(),
 	}
@@ -89,8 +83,7 @@ func NewController(
 		informersSynced:     informers.DependencyGraph.Informer().HasSynced,
 		kubernetesClientset: kubernetesClientset,
 		recorder:            recorder,
-		status:              status,
-		SharedStatus:        shared,
+		Status:              status,
 		MetricClient:        metricsClient,
 		depdagsWorkQueue:    queue.NewQueue("DependencyGraphsQueue"),
 	}
@@ -98,8 +91,8 @@ func NewController(
 	klog.Info("[N+] Setting up event handlers")
 	informers.DependencyGraph.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.handleDependencyGraphAdd,
-		UpdateFunc: controller.handleDependencyGraphUpdate,
 		DeleteFunc: controller.handleDependencyGraphDelete,
+		UpdateFunc: controller.handleDependencyGraphUpdate,
 	})
 
 	return controller
@@ -119,7 +112,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	// Wait for the caches to be synced before starting workers
 	klog.Info("[N+] Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.informersSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+		return fmt.Errorf("[N+] Failed to wait for caches to sync")
 	}
 
 	klog.Info("[N+] Starting dependency graph workers")
@@ -128,22 +121,51 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 		go wait.Until(c.runWorkerSync, time.Second, stopCh)
 	}
 
-	// lunch worker for aggregating the times
-	go wait.Until(c.aggregateGraphTimes, 5*time.Second, stopCh)
-	go wait.Until(c.runGraphStatusSync, 2*time.Second, stopCh)
-	klog.Info("Started dependency graph workers")
+	// go wait.Until(c.runDependencyGraphListerWorker, 5*time.Second, stopCh)
+	go wait.Until(c.runAggregateGraphTimesWorker, 5*time.Second, stopCh)
+	go wait.Until(c.runGraphStatusSync, 5*time.Second, stopCh)
+	klog.Info("[N+] Started dependency graph workers")
 
 	return nil
 }
 
 func (c *Controller) runWorkerSync() {
+	klog.Info("[N+] Syncing dependency graphs")
 	for c.depdagsWorkQueue.ProcessNextItem(c.syncDependencyGraph) {
 	}
 }
 
-func (c *Controller) runGraphStatusSync() {
-	c.status.graphMap.Range(func(key, value interface{}) bool {
+func (c *Controller) runAggregateGraphTimesWorker() {
+	klog.Info("[N+] Aggregating external response times for all tracked dependency graphs")
+	c.Status.DependencyGraphs.Range(func(key, value interface{}) bool {
+		klog.Infof("[N+] Aggregating graph times for dependency graph %s", key)
 
+		found, ok := c.Status.DependencyGraphs.Load(key)
+		if !ok {
+			klog.Errorf("[N+] Graph %s not found in controller map", key)
+			return true
+		}
+		nodes, ok := found.([]v1alpha1.FunctionNode)
+		if !ok {
+			klog.Errorf("[N+] Error casting function node list for graph %s", key)
+			return true
+		}
+
+		c.aggregateGraphTimes(nodes)
+		return true
+	})
+
+}
+
+func (c *Controller) Shutdown() {
+	klog.Info("[N+] Shutting down Dependency Controller")
+	utilruntime.HandleCrash()
+	c.depdagsWorkQueue.ShutDown()
+	klog.Info("[N+] Shut down Dependency Controller")
+}
+
+func (c *Controller) runGraphStatusSync() {
+	c.Status.DependencyGraphs.Range(func(key, value interface{}) bool {
 		keyAsStr, okKey := key.(string)
 		valueAsNodes, okValue := value.([]v1alpha1.FunctionNode)
 		if !okKey || !okValue {
@@ -151,12 +173,8 @@ func (c *Controller) runGraphStatusSync() {
 			return true // keep iterating
 		}
 
+		klog.Infof("[N+] Updating status for dependency graph %s", keyAsStr)
 		c.updateGraphStatus(keyAsStr, valueAsNodes)
 		return true
 	})
-}
-
-func (c *Controller) Shutdown() {
-	utilruntime.HandleCrash()
-	c.depdagsWorkQueue.ShutDown()
 }

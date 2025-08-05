@@ -65,7 +65,7 @@ type Controller struct {
 	out chan types.NodeScales
 
 	// dependency status is the shared status of the dependency graph controller
-	dependencyStatus *dependencycontroller.SharedStatus
+	dependencyStatus *dependencycontroller.Status
 }
 
 // Status represents the state of the controller
@@ -81,7 +81,7 @@ func NewController(
 	metricsClient metricsgetter.MetricGetter,
 	informers informers.Informers,
 	out chan types.NodeScales,
-	dependencyStatus *dependencycontroller.SharedStatus,
+	dependencyStatus *dependencycontroller.Status,
 ) *Controller {
 
 	// Create event broadcaster
@@ -253,13 +253,15 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		}
 		c.status.logicMap.Store(key, logicInterface)
 	}
+
 	logic, ok := logicInterface.(Logic)
 	if !ok {
 		return nil, fmt.Errorf("error: %s, failed to cast logic with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
 	}
 
 	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
-		lrtMilli := c.computeLocalResponseTimeMilli(podScale, metrics)
+		// Get the approximated local response time for the pod
+		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale.Spec.Namespace, podScale.Spec.Service, metrics)
 		metrics.Value.SetMilli(lrtMilli)
 	}
 
