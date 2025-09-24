@@ -21,7 +21,7 @@ func (c *Controller) aggregateGraphTimes(nodes []v1alpha1.FunctionNode) {
 
 		if err != nil {
 			klog.Errorf("[N+] Could not retrieve response time metrics for service %s:%s. %v", node.FunctionNamespace, node.FunctionName, err)
-			avgFunctionRTs[key] = node.NominalResponseTime.MilliValue()
+			avgFunctionRTs[key] = node.NominalLocalResponseTime.MilliValue()
 		} else {
 			avgFunctionRTs[key] = svcArt
 		}

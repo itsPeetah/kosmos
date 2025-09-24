@@ -48,7 +48,7 @@ func (c *Controller) syncDependencyGraph(key string) error {
 
 	// Store the nominal response times
 	for _, node := range dag.Spec.Nodes {
-		c.Status.NominalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), node.NominalResponseTime.MilliValue())
+		c.Status.NominalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), node.NominalLocalResponseTime.MilliValue())
 	}
 
 	c.recorder.Event(dag, corev1.EventTypeNormal, "Synced", fmt.Sprintf("[N+] Dependency graph %s synced successfully", dagKey))

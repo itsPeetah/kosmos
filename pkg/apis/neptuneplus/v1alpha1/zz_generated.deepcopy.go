@@ -122,7 +122,7 @@ func (in *FunctionNode) DeepCopyInto(out *FunctionNode) {
 		*out = make([]InvocationEdge, len(*in))
 		copy(*out, *in)
 	}
-	out.NominalResponseTime = in.NominalResponseTime.DeepCopy()
+	out.NominalLocalResponseTime = in.NominalLocalResponseTime.DeepCopy()
 	return
 }
 

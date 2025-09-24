@@ -26,8 +26,8 @@ type FunctionNode struct {
 	FunctionNamespace string `json:"functionNamespace"`
 	// Invocations is the list of out-edges from the node to invoked functions.
 	Invocations []InvocationEdge `json:"invocations"`
-	// Nominal Response Time is the response time recorded in the profiling phase
-	NominalResponseTime resource.Quantity `json:"nominalResponseTime"`
+	// Nominal Local Response Time is the response time recorded in the profiling phase
+	NominalLocalResponseTime resource.Quantity `json:"nominalLocalResponseTime"`
 }
 
 // DependencyGraphSpec defines the desired state of DependencyGraph.
