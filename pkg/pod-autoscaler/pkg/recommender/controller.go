@@ -261,7 +261,7 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 
 	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
 		// Get the approximated local response time for the pod
-		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale.Spec.Namespace, podScale.Spec.Service, metrics)
+		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, metrics)
 		metrics.Value.SetMilli(lrtMilli)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	np "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
+	"github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
 	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 )
@@ -97,7 +98,8 @@ func (s *Status) NominalResponseTime(key string) (int64, bool) {
 	return nrtq, true
 }
 
-func (s *Status) GetLocalResponseTimeMilli(functionNamespace string, functionName string, responseTime *v1beta2.MetricValue) int64 {
+func (s *Status) GetLocalResponseTimeMilli(podScale *v1beta1.PodScale, responseTime *v1beta2.MetricValue) int64 {
+
 	rt := responseTime.Value.MilliValue()
 
 	// this just catches the rt == 0 case, which happens when there's no requests
@@ -106,12 +108,12 @@ func (s *Status) GetLocalResponseTimeMilli(functionNamespace string, functionNam
 	}
 
 	// local response time
-	key := MakeNamespaceNameKey(functionNamespace, functionName)
+	key := MakeNamespaceNameKey(podScale.Spec.Namespace, podScale.Spec.Service)
 	nrt, _ := s.NominalResponseTime(key)
 	ert, _ := s.ExternalResponseTime(key)
 	lrt := rt - ert
 
-	klog.Infof("[N+] Compute local response time (milli) for %s: rt=%d, nrt=%d, ert=%d, lrt=%d", functionName, rt, nrt, ert, lrt)
+	klog.Infof("[N+] Pod %s: rt=%d, nrt=%d, ert=%d, lrt=%d", podScale.Spec.Pod, rt, nrt, ert, lrt)
 
 	// avoid paradoxes
 	if lrt < nrt {
