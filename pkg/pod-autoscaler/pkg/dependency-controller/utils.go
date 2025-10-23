@@ -75,7 +75,7 @@ func sortNodesByDependencies(nodes []np.FunctionNode) []np.FunctionNode {
 }
 
 func (s *Status) ExternalResponseTime(key string) (int64, bool) {
-	ert, ok := s.ExternalResponseTimesMap.Load(key)
+	ert, ok := s.ERTsMap.Load(key)
 	if !ok {
 		return 0, false
 	}
@@ -86,8 +86,8 @@ func (s *Status) ExternalResponseTime(key string) (int64, bool) {
 	return ertq, true
 }
 
-func (s *Status) NominalResponseTime(key string) (int64, bool) {
-	nrt, ok := s.NominalResponseTimesMap.Load(key)
+func (s *Status) NominalLocalResponseTime(key string) (int64, bool) {
+	nrt, ok := s.NLRTsMap.Load(key)
 	if !ok {
 		return 0, false
 	}
@@ -109,15 +109,15 @@ func (s *Status) GetLocalResponseTimeMilli(podScale *v1beta1.PodScale, responseT
 
 	// local response time
 	key := MakeNamespaceNameKey(podScale.Spec.Namespace, podScale.Spec.Service)
-	nrt, _ := s.NominalResponseTime(key)
+	nlrt, _ := s.NominalLocalResponseTime(key)
 	ert, _ := s.ExternalResponseTime(key)
 	lrt := rt - ert
 
-	klog.Infof("[N+] Pod %s: rt=%d, nrt=%d, ert=%d, lrt=%d", podScale.Spec.Pod, rt, nrt, ert, lrt)
+	klog.Infof("[N+] Pod %s: rt=%d, ert=%d, lrt=%d, nlrt=%d", podScale.Spec.Pod, rt, ert, lrt, nlrt)
 
 	// avoid paradoxes
-	if lrt < nrt {
-		return nrt
+	if lrt < nlrt {
+		return nlrt
 	}
 
 	return lrt

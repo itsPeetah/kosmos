@@ -55,7 +55,7 @@ func (c *Controller) aggregateGraphTimes(nodes []v1alpha1.FunctionNode) {
 			avgEdgeRTs[edge.EdgeId] = 0
 		}
 
-		c.Status.ExternalResponseTimesMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), sum)
+		c.Status.ERTsMap.Store(MakeNamespaceNameKey(node.FunctionNamespace, node.FunctionName), sum)
 		klog.Infof("[N+] %s:%s - External response time for function: %d", node.FunctionNamespace, node.FunctionName, sum)
 	}
 }

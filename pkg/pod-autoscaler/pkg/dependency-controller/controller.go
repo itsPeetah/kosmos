@@ -51,9 +51,9 @@ type Status struct {
 	// Key: namespace:name of the graph, Value: nodes, sorted leaves-to-root
 	DependencyGraphs *concurrent.Map
 	// Key: namespace:name of the function, Value: computed external response time
-	ExternalResponseTimesMap *concurrent.Map
+	ERTsMap *concurrent.Map
 	// Key: namespace:name of the function, Value: nominal response time as noted in the graph
-	NominalResponseTimesMap *concurrent.Map
+	NLRTsMap *concurrent.Map
 }
 
 func NewController(
@@ -71,9 +71,9 @@ func NewController(
 
 	// Create Controller status
 	status := &Status{
-		DependencyGraphs:         concurrent.NewMap(),
-		ExternalResponseTimesMap: concurrent.NewMap(),
-		NominalResponseTimesMap:  concurrent.NewMap(),
+		DependencyGraphs: concurrent.NewMap(),
+		ERTsMap:          concurrent.NewMap(),
+		NLRTsMap:         concurrent.NewMap(),
 	}
 
 	// Instantiate the Controller
