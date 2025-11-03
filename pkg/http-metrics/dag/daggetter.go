@@ -15,12 +15,12 @@ const exposerUrl = "http://np-dag-expo-service.kube-system.svc.cluster.local/get
 var (
 	functionName      string
 	functionNamespace string
-	DepDAG            *np.DependencyGraph = nil
+	DepDAG            *np.DependencyGraphSpec = nil
 )
 
 func InitDag() {
-	functionName = os.Getenv("FUNCTION_NAME")
-	functionNamespace = os.Getenv("FUNCTION_NAMESPACE")
+	functionName = os.Getenv("FUNCTION")
+	functionNamespace = os.Getenv("NAMESPACE")
 }
 
 func GetDagJson() {
@@ -31,7 +31,7 @@ func GetDagJson() {
 		klog.Error("Error %v", err)
 	}
 	defer res.Body.Close()
-	var depGraph np.DependencyGraph
+	var depGraph np.DependencyGraphSpec
 	if err := json.NewDecoder(res.Body).Decode(&depGraph); err != nil {
 		klog.Errorf("Failed to decode DAG JSON: %v", err)
 		return

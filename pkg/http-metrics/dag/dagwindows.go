@@ -17,7 +17,7 @@ func NewDAGWindows(window rolling.Window, bucketDuration time.Duration) DAGWindo
 	dagWindows := make(map[string]*rolling.TimePolicy)
 	invocationIDs := make(map[string]int)
 
-	for _, node := range DepDAG.Spec.Nodes {
+	for _, node := range DepDAG.Nodes {
 		if node.FunctionName == functionName && node.FunctionNamespace == functionNamespace {
 			for _, invocation := range node.Invocations {
 				key := fmt.Sprintf("%s/%s", invocation.FunctionNamespace, invocation.FunctionName)
