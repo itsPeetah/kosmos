@@ -1,24 +1,48 @@
 package dag
 
 import (
+	"log"
+
 	"github.com/asecurityteam/rolling"
+	"k8s.io/klog/v2"
 )
 
-func GetExternalResponeTime(dw *DAGWindows) int64 {
+func (dw *DAGWindows) GetExternalResponeTime() float64 {
 
-	avgEdgeRTs := make(map[int]int64)
-	for key, invocationID := range dw.InvocationIDs {
-		avg := dw.Windows[key].Reduce(rolling.Avg)
-		if val, ok := avgEdgeRTs[invocationID]; ok {
-			if int64(avg) > val {
-				avgEdgeRTs[invocationID] = int64(avg)
+	avgEdgeRTs := make(map[int]float64)
+
+	dw.InvocationIDs.Range(func(key, value interface{}) (ret bool) {
+
+		ret = true
+		fn := key.(string)
+		id := value.(int)
+
+		window, ok := dw.Windows.Load(fn)
+		if !ok {
+			klog.Infof("no window for function %s", key)
+			avgEdgeRTs[id] = 0
+			return
+		}
+
+		w := window.(*rolling.TimePolicy)
+
+		avg := w.Reduce(rolling.Avg)
+		count := w.Reduce(rolling.Count)
+
+		log.Printf("function %s: rt = %f (for %f requests)", key, avg, count)
+
+		if val, ok := avgEdgeRTs[id]; ok {
+			if avg > val {
+				avgEdgeRTs[id] = avg
 			}
 		} else {
-			avgEdgeRTs[invocationID] = int64(avg)
+			avgEdgeRTs[id] = avg
 		}
-	}
 
-	sum := int64(0)
+		return
+	})
+
+	sum := float64(0)
 	for _, v := range avgEdgeRTs {
 		sum += v
 	}

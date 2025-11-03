@@ -98,9 +98,10 @@ func (s *Status) NominalLocalResponseTime(key string) (int64, bool) {
 	return nrtq, true
 }
 
-func (s *Status) GetLocalResponseTimeMilli(podScale *v1beta1.PodScale, responseTime *v1beta2.MetricValue) int64 {
+func (s *Status) GetLocalResponseTimeMilli(podScale *v1beta1.PodScale, rtTotal *v1beta2.MetricValue, rtExternal *v1beta2.MetricValue) int64 {
 
-	rt := responseTime.Value.MilliValue()
+	rt := rtTotal.Value.MilliValue()
+	ert := rtExternal.Value.MilliValue()
 
 	// this just catches the rt == 0 case, which happens when there's no requests
 	if rt <= 0 {
@@ -108,15 +109,13 @@ func (s *Status) GetLocalResponseTimeMilli(podScale *v1beta1.PodScale, responseT
 	}
 
 	// local response time
-	key := MakeNamespaceNameKey(podScale.Spec.Namespace, podScale.Spec.Service)
-	nlrt, _ := s.NominalLocalResponseTime(key)
-	ert, _ := s.ExternalResponseTime(key)
+	nlrt, _ := s.NominalLocalResponseTime(MakeNamespaceNameKey(podScale.Spec.Namespace, podScale.Spec.Service))
 	lrt := rt - ert
 
 	klog.Infof("[N+] Pod %s: rt=%d, ert=%d, lrt=%d, nlrt=%d", podScale.Spec.Pod, rt, ert, lrt, nlrt)
 
 	// avoid paradoxes
-	if lrt < nlrt {
+	if lrt < 0 {
 		return nlrt
 	}
 

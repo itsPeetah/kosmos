@@ -21,7 +21,7 @@ import (
 var target = &url.URL{}
 var window = &rolling.TimePolicy{}
 var reverseProxy = &httputil.ReverseProxy{}
-var dagWindows = dag.DAGWindows{}
+var dagWindows = &dag.DAGWindows{}
 var dispatcherTarget = &url.URL{}
 var dispatcherProxy = &httputil.ReverseProxy{}
 
@@ -53,14 +53,14 @@ func main() {
 		Addr:    ":8000",
 		Handler: mux,
 	}
+	// Initialize dispatcher reverse proxy
+	dispatcherTarget, _ = url.Parse("http://dispatcher.default.svc.cluster.local:80")
+	dispatcherProxy = httputil.NewSingleHostReverseProxy(dispatcherTarget)
+	log.Println("Forwarding all /function requests to:", dispatcherTarget)
+
 	target, _ = url.Parse("http://" + address + ":" + port)
 	reverseProxy = httputil.NewSingleHostReverseProxy(target)
 	log.Println("Forwarding all requests to:", target)
-
-	// Initialize dispatcher reverse proxy
-	dispatcherTarget, _ = url.Parse("http://dispatcher.default.svc.cluster.local")
-	dispatcherProxy = httputil.NewSingleHostReverseProxy(dispatcherTarget)
-	log.Println("Forwarding all /function requests to:", dispatcherTarget)
 
 	windowSize, err = time.ParseDuration(windowSizeString)
 
@@ -74,15 +74,19 @@ func main() {
 		log.Fatalf("Failed to parse windows granularity. Error: %v", err)
 	}
 
-	w := rolling.NewWindow(int(windowSize.Nanoseconds() / windowGranularity.Nanoseconds()))
-	d := time.Millisecond
-
-	window = rolling.NewTimePolicy(w, d)
+	window = rolling.NewTimePolicy(rolling.NewWindow(int(windowSize.Nanoseconds()/windowGranularity.Nanoseconds())), time.Millisecond)
 	log.Println("Time window initialized with size:", windowSizeString, " and granularity:", windowGranularityString)
 
 	dag.InitDag()
 	dag.GetDagJson()
-	dagWindows = dag.NewDAGWindows(w, d)
+	options := dag.DAGWindowsOptions{
+		WinSize: windowSize.Nanoseconds(),
+		WinGran: windowGranularity.Nanoseconds(),
+		BuckDur: time.Millisecond,
+	}
+	klog.Infof("Time windows will be initialized initialized with size: %d and granularity: %d", options.WinSize, options.WinGran)
+
+	dagWindows = dag.NewDAGWindows(&options)
 
 	// output error and quit if ListenAndServe fails
 	log.Fatal(srv.ListenAndServe())
@@ -91,6 +95,9 @@ func main() {
 
 // ForwardRequest send all the request the the pod except for the ones having metrics/ in the path
 func ForwardRequest(res http.ResponseWriter, req *http.Request) {
+
+	klog.Info("FWDREQ")
+
 	requestTime := time.Now()
 	reverseProxy.ServeHTTP(res, req)
 	responseTime := time.Now()
@@ -119,7 +126,11 @@ func RequestCount(res http.ResponseWriter, req *http.Request) {
 // Throughput returns the pod throughput in request per second
 func Throughput(res http.ResponseWriter, req *http.Request) {
 	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	throughput := float64(dag.GetExternalResponeTime(&dagWindows))
+	throughput := float64(dagWindows.GetExternalResponeTime())
+	if math.IsNaN(throughput) {
+		throughput = 0
+	}
+
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.Throughput.String(), throughput)
 }
 
@@ -137,7 +148,10 @@ func AllMetrics(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	throughput := float64(dag.GetExternalResponeTime(&dagWindows))
+	throughput := float64(dagWindows.GetExternalResponeTime())
+	if math.IsNaN(throughput) {
+		throughput = 0
+	}
 	// TODO: maybe we should wrap this into an helper function of metrics struct
 
 	klog.Infof(`{"%s": %f,"%s": %f,"%s": %f}`, metrics.ResponseTime.String(), responseTime, metrics.RequestCount.String(), requestCount, metrics.Throughput.String(), throughput)
@@ -145,6 +159,9 @@ func AllMetrics(res http.ResponseWriter, req *http.Request) {
 }
 
 func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
+
+	klog.Infof("Forwarding request to: %s", req.URL.Path)
+
 	requestTime := time.Now()
 	// Forward to dispatcher first to avoid delaying the user due to metric work
 	dispatcherProxy.ServeHTTP(res, req)
@@ -158,8 +175,9 @@ func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
 		fns := parts[1]
 		fname := parts[2]
 		key := fns + "/" + fname
-		if w, ok := dagWindows.Windows[key]; ok && w != nil {
-			w.Append(float64(delta.Milliseconds()))
-		}
+		dagWindows.RecordResponseTime(key, delta.Milliseconds())
+
+		w, _ := dagWindows.Windows.Load(key)
+		klog.Infof("Requests made to %s: %f", req.URL.Path, w.(*rolling.TimePolicy).Reduce(rolling.Count))
 	}
 }

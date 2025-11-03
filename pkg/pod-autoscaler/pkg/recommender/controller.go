@@ -10,6 +10,7 @@ import (
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 
 	nptypes "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
@@ -230,8 +231,8 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		return nil, err
 	}
 
-	// Retrieve the metrics
-	metrics, err := c.MetricClient.PodMetrics(pod, metrics.ResponseTime)
+	// Retrieve the respTime
+	respTime, err := c.MetricClient.PodMetrics(pod, metrics.ResponseTime)
 	if err != nil {
 		return nil, fmt.Errorf("error: %s, failed to get metrics from pod with name %s and namespace %s from lister", err, pod.GetName(), pod.GetNamespace())
 	}
@@ -261,12 +262,17 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 
 	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
 		// Get the approximated local response time for the pod
-		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, metrics)
-		metrics.Value.SetMilli(lrtMilli)
+		extRespTime, err := c.MetricClient.PodMetrics(pod, metrics.Throughput) // don't ask :)
+		if err != nil {
+			extRespTime = &v1beta2.MetricValue{}
+			extRespTime.Value.SetMilli(0)
+		}
+		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, respTime, extRespTime)
+		respTime.Value.SetMilli(lrtMilli)
 	}
 
 	// Compute the new resources
-	newPodScale, err := logic.computePodScale(pod, podScale, sla, metrics)
+	newPodScale, err := logic.computePodScale(pod, podScale, sla, respTime)
 	if err != nil {
 		return nil, fmt.Errorf("error: %s, failed to compute podscale with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
 	}
