@@ -8,17 +8,22 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/klog/v2"
 
 	"github.com/asecurityteam/rolling"
+	"github.com/lterrac/system-autoscaler/pkg/http-metrics/dag"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
 )
 
 var target = &url.URL{}
 var window = &rolling.TimePolicy{}
 var reverseProxy = &httputil.ReverseProxy{}
+var dagWindows = dag.DAGWindows{}
+var dispatcherTarget = &url.URL{}
+var dispatcherProxy = &httputil.ReverseProxy{}
 
 // Environment
 var address string
@@ -33,6 +38,7 @@ func main() {
 	mux.Handle("/metric/request_count", http.HandlerFunc(RequestCount))
 	mux.Handle("/metric/throughput", http.HandlerFunc(Throughput))
 	mux.Handle("/metrics/", http.HandlerFunc(AllMetrics))
+	mux.Handle("/function/", http.HandlerFunc(ForwardFunctionRequest))
 	mux.Handle("/", http.HandlerFunc(ForwardRequest))
 
 	address = os.Getenv("ADDRESS")
@@ -51,6 +57,11 @@ func main() {
 	reverseProxy = httputil.NewSingleHostReverseProxy(target)
 	log.Println("Forwarding all requests to:", target)
 
+	// Initialize dispatcher reverse proxy
+	dispatcherTarget, _ = url.Parse("http://dispatcher.default.svc.cluster.local")
+	dispatcherProxy = httputil.NewSingleHostReverseProxy(dispatcherTarget)
+	log.Println("Forwarding all /function requests to:", dispatcherTarget)
+
 	windowSize, err = time.ParseDuration(windowSizeString)
 
 	if err != nil {
@@ -63,8 +74,15 @@ func main() {
 		log.Fatalf("Failed to parse windows granularity. Error: %v", err)
 	}
 
-	window = rolling.NewTimePolicy(rolling.NewWindow(int(windowSize.Nanoseconds()/windowGranularity.Nanoseconds())), time.Millisecond)
+	w := rolling.NewWindow(int(windowSize.Nanoseconds() / windowGranularity.Nanoseconds()))
+	d := time.Millisecond
+
+	window = rolling.NewTimePolicy(w, d)
 	log.Println("Time window initialized with size:", windowSizeString, " and granularity:", windowGranularityString)
+
+	dag.InitDag()
+	dag.GetDagJson()
+	dagWindows = dag.NewDAGWindows(w, d)
 
 	// output error and quit if ListenAndServe fails
 	log.Fatal(srv.ListenAndServe())
@@ -100,7 +118,8 @@ func RequestCount(res http.ResponseWriter, req *http.Request) {
 
 // Throughput returns the pod throughput in request per second
 func Throughput(res http.ResponseWriter, req *http.Request) {
-	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	throughput := float64(dag.GetExternalResponeTime(&dagWindows))
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.Throughput.String(), throughput)
 }
 
@@ -117,9 +136,30 @@ func AllMetrics(res http.ResponseWriter, req *http.Request) {
 		requestCount = 0
 	}
 
-	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	throughput := float64(dag.GetExternalResponeTime(&dagWindows))
 	// TODO: maybe we should wrap this into an helper function of metrics struct
 
 	klog.Infof(`{"%s": %f,"%s": %f,"%s": %f}`, metrics.ResponseTime.String(), responseTime, metrics.RequestCount.String(), requestCount, metrics.Throughput.String(), throughput)
 	_, _ = fmt.Fprintf(res, `{"%s": %f,"%s": %f,"%s": %f}`, metrics.ResponseTime.String(), responseTime, metrics.RequestCount.String(), requestCount, metrics.Throughput.String(), throughput)
+}
+
+func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
+	requestTime := time.Now()
+	// Forward to dispatcher first to avoid delaying the user due to metric work
+	dispatcherProxy.ServeHTTP(res, req)
+	responseTime := time.Now()
+	delta := responseTime.Sub(requestTime)
+
+	// Extract /function/<fns>/<fname>/...
+	path := strings.TrimPrefix(req.URL.Path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) >= 3 && parts[0] == "function" {
+		fns := parts[1]
+		fname := parts[2]
+		key := fns + "/" + fname
+		if w, ok := dagWindows.Windows[key]; ok && w != nil {
+			w.Append(float64(delta.Milliseconds()))
+		}
+	}
 }
