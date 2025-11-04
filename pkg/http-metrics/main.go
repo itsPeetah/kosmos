@@ -107,10 +107,13 @@ func ForwardRequest(res http.ResponseWriter, req *http.Request) {
 
 // ResponseTime return the pod average response time
 func ResponseTime(res http.ResponseWriter, req *http.Request) {
-	responseTime := window.Reduce(rolling.Avg)
-	if math.IsNaN(responseTime) {
-		responseTime = 0
-	}
+	// responseTime := window.Reduce(rolling.Avg)
+	// if math.IsNaN(responseTime) {
+	// 	responseTime = 0
+	// }
+
+	responseTime := getLocalResponseTime()
+
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.ResponseTime.String(), responseTime)
 }
 
@@ -125,11 +128,11 @@ func RequestCount(res http.ResponseWriter, req *http.Request) {
 
 // Throughput returns the pod throughput in request per second
 func Throughput(res http.ResponseWriter, req *http.Request) {
-	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	throughput := float64(dagWindows.GetExternalResponeTime())
-	if math.IsNaN(throughput) {
-		throughput = 0
-	}
+	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	// throughput := float64(dagWindows.GetExternalResponeTime())
+	// if math.IsNaN(throughput) {
+	// 	throughput = 0
+	// }
 
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.Throughput.String(), throughput)
 }
@@ -137,18 +140,20 @@ func Throughput(res http.ResponseWriter, req *http.Request) {
 // AllMetrics returns all the metrics available for the pod
 func AllMetrics(res http.ResponseWriter, req *http.Request) {
 
-	responseTime := window.Reduce(rolling.Avg)
-	if math.IsNaN(responseTime) {
-		responseTime = 0
-	}
+	// responseTime := window.Reduce(rolling.Avg)
+	// if math.IsNaN(responseTime) {
+	// 	responseTime = 0
+	// }
+
+	responseTime := getLocalResponseTime()
 
 	requestCount := window.Reduce(rolling.Count)
 	if math.IsNaN(requestCount) {
 		requestCount = 0
 	}
 
-	// throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	throughput := float64(dagWindows.GetExternalResponeTime())
+	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
+	// throughput := float64(dagWindows.GetExternalResponeTime())
 	if math.IsNaN(throughput) {
 		throughput = 0
 	}
@@ -180,4 +185,24 @@ func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
 		w, _ := dagWindows.Windows.Load(key)
 		klog.Infof("Requests made to %s: %f", req.URL.Path, w.(*rolling.TimePolicy).Reduce(rolling.Count))
 	}
+}
+
+func getLocalResponseTime() float64 {
+
+	responseTime := window.Reduce(rolling.Avg)
+	if math.IsNaN(responseTime) {
+		responseTime = 0
+	}
+
+	externalTime := float64(dagWindows.GetExternalResponeTime())
+	if math.IsNaN(externalTime) {
+		externalTime = 0
+	}
+
+	localTime := responseTime - externalTime
+	if localTime <= 0 {
+		localTime = 0
+	}
+
+	return localTime
 }

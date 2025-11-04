@@ -10,7 +10,6 @@ import (
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 
 	nptypes "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	"github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
@@ -260,16 +259,16 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		return nil, fmt.Errorf("error: %s, failed to cast logic with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
 	}
 
-	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
-		// Get the approximated local response time for the pod
-		extRespTime, err := c.MetricClient.PodMetrics(pod, metrics.Throughput) // don't ask :)
-		if err != nil {
-			extRespTime = &v1beta2.MetricValue{}
-			extRespTime.Value.SetMilli(0)
-		}
-		lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, respTime, extRespTime)
-		respTime.Value.SetMilli(lrtMilli)
-	}
+	// if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
+	// 	// Get the approximated local response time for the pod
+	// 	extRespTime, err := c.MetricClient.PodMetrics(pod, metrics.Throughput) // don't ask :)
+	// 	if err != nil {
+	// 		extRespTime = &v1beta2.MetricValue{}
+	// 		extRespTime.Value.SetMilli(0)
+	// 	}
+	// 	lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, respTime, extRespTime)
+	// 	respTime.Value.SetMilli(lrtMilli)
+	// }
 
 	// Compute the new resources
 	newPodScale, err := logic.computePodScale(pod, podScale, sla, respTime)
