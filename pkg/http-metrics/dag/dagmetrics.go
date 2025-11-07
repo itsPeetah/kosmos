@@ -1,8 +1,6 @@
 package dag
 
 import (
-	"log"
-
 	"github.com/asecurityteam/rolling"
 	"k8s.io/klog/v2"
 )
@@ -25,12 +23,7 @@ func (dw *DAGWindows) GetExternalResponeTime() float64 {
 		}
 
 		w := window.(*rolling.TimePolicy)
-
 		avg := w.Reduce(rolling.Avg)
-		count := w.Reduce(rolling.Count)
-
-		log.Printf("function %s: rt = %f (for %f requests)", key, avg, count)
-
 		if val, ok := avgEdgeRTs[id]; ok {
 			if avg > val {
 				avgEdgeRTs[id] = avg

@@ -95,9 +95,6 @@ func main() {
 
 // ForwardRequest send all the request the the pod except for the ones having metrics/ in the path
 func ForwardRequest(res http.ResponseWriter, req *http.Request) {
-
-	klog.Info("FWDREQ")
-
 	requestTime := time.Now()
 	reverseProxy.ServeHTTP(res, req)
 	responseTime := time.Now()
@@ -107,13 +104,7 @@ func ForwardRequest(res http.ResponseWriter, req *http.Request) {
 
 // ResponseTime return the pod average response time
 func ResponseTime(res http.ResponseWriter, req *http.Request) {
-	// responseTime := window.Reduce(rolling.Avg)
-	// if math.IsNaN(responseTime) {
-	// 	responseTime = 0
-	// }
-
 	responseTime := getLocalResponseTime()
-
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.ResponseTime.String(), responseTime)
 }
 
@@ -164,9 +155,6 @@ func AllMetrics(res http.ResponseWriter, req *http.Request) {
 }
 
 func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
-
-	klog.Infof("Forwarding request to: %s", req.URL.Path)
-
 	requestTime := time.Now()
 	// Forward to dispatcher first to avoid delaying the user due to metric work
 	dispatcherProxy.ServeHTTP(res, req)
@@ -181,9 +169,6 @@ func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
 		fname := parts[2]
 		key := fns + "/" + fname
 		dagWindows.RecordResponseTime(key, delta.Milliseconds())
-
-		w, _ := dagWindows.Windows.Load(key)
-		klog.Infof("Requests made to %s: %f", req.URL.Path, w.(*rolling.TimePolicy).Reduce(rolling.Count))
 	}
 }
 
@@ -203,6 +188,8 @@ func getLocalResponseTime() float64 {
 	if localTime <= 0 {
 		localTime = 0
 	}
+
+	klog.Infof("response time: %f (external: %f, local: %f)", responseTime, externalTime, localTime)
 
 	return localTime
 }
