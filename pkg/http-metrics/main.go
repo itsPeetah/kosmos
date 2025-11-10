@@ -14,16 +14,16 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/asecurityteam/rolling"
-	"github.com/lterrac/system-autoscaler/pkg/http-metrics/dag"
+	"github.com/lterrac/system-autoscaler/pkg/http-metrics/dependencies"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
 )
 
 var target = &url.URL{}
 var window = &rolling.TimePolicy{}
 var reverseProxy = &httputil.ReverseProxy{}
-var dagWindows = &dag.DAGWindows{}
 var dispatcherTarget = &url.URL{}
 var dispatcherProxy = &httputil.ReverseProxy{}
+var dependencyController = &dependencies.DependencyController{}
 
 // Environment
 var address string
@@ -35,6 +35,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/metric/response_time", http.HandlerFunc(ResponseTime))
+	mux.Handle("/metric/local_response_time", http.HandlerFunc(LocalResponseTime))
 	mux.Handle("/metric/request_count", http.HandlerFunc(RequestCount))
 	mux.Handle("/metric/throughput", http.HandlerFunc(Throughput))
 	mux.Handle("/metrics/", http.HandlerFunc(AllMetrics))
@@ -77,16 +78,15 @@ func main() {
 	window = rolling.NewTimePolicy(rolling.NewWindow(int(windowSize.Nanoseconds()/windowGranularity.Nanoseconds())), time.Millisecond)
 	log.Println("Time window initialized with size:", windowSizeString, " and granularity:", windowGranularityString)
 
-	dag.InitDag()
-	dag.GetDagJson()
-	options := dag.DAGWindowsOptions{
+	options := dependencies.DAGWindowsOptions{
 		WinSize: windowSize.Nanoseconds(),
 		WinGran: windowGranularity.Nanoseconds(),
 		BuckDur: time.Millisecond,
 	}
-	klog.Infof("Time windows will be initialized initialized with size: %d and granularity: %d", options.WinSize, options.WinGran)
-
-	dagWindows = dag.NewDAGWindows(&options)
+	dependencyController = dependencies.NewDependencyController(
+		0.8, // arbitrary scale factor for now
+		&options,
+	)
 
 	// output error and quit if ListenAndServe fails
 	log.Fatal(srv.ListenAndServe())
@@ -104,8 +104,17 @@ func ForwardRequest(res http.ResponseWriter, req *http.Request) {
 
 // ResponseTime return the pod average response time
 func ResponseTime(res http.ResponseWriter, req *http.Request) {
-	responseTime := getLocalResponseTime()
+	responseTime := window.Reduce(rolling.Avg)
+	if math.IsNaN(responseTime) {
+		responseTime = 0
+	}
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.ResponseTime.String(), responseTime)
+}
+
+// ResponseTime return the pod average response time
+func LocalResponseTime(res http.ResponseWriter, req *http.Request) {
+	responseTime := getLocalResponseTime()
+	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.LocalResponseTime.String(), responseTime)
 }
 
 // RequestCount return the current number of request sent to the pod
@@ -120,23 +129,21 @@ func RequestCount(res http.ResponseWriter, req *http.Request) {
 // Throughput returns the pod throughput in request per second
 func Throughput(res http.ResponseWriter, req *http.Request) {
 	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	// throughput := float64(dagWindows.GetExternalResponeTime())
-	// if math.IsNaN(throughput) {
-	// 	throughput = 0
-	// }
-
+	if math.IsNaN(throughput) {
+		throughput = 0
+	}
 	_, _ = fmt.Fprintf(res, `{"%s": %f}`, metrics.Throughput.String(), throughput)
 }
 
 // AllMetrics returns all the metrics available for the pod
 func AllMetrics(res http.ResponseWriter, req *http.Request) {
 
-	// responseTime := window.Reduce(rolling.Avg)
-	// if math.IsNaN(responseTime) {
-	// 	responseTime = 0
-	// }
+	responseTime := window.Reduce(rolling.Avg)
+	if math.IsNaN(responseTime) {
+		responseTime = 0
+	}
 
-	responseTime := getLocalResponseTime()
+	localResponseTime := getLocalResponseTime()
 
 	requestCount := window.Reduce(rolling.Count)
 	if math.IsNaN(requestCount) {
@@ -144,14 +151,20 @@ func AllMetrics(res http.ResponseWriter, req *http.Request) {
 	}
 
 	throughput := window.Reduce(rolling.Count) / windowSize.Seconds()
-	// throughput := float64(dagWindows.GetExternalResponeTime())
 	if math.IsNaN(throughput) {
 		throughput = 0
 	}
 	// TODO: maybe we should wrap this into an helper function of metrics struct
 
-	klog.Infof(`{"%s": %f,"%s": %f,"%s": %f}`, metrics.ResponseTime.String(), responseTime, metrics.RequestCount.String(), requestCount, metrics.Throughput.String(), throughput)
-	_, _ = fmt.Fprintf(res, `{"%s": %f,"%s": %f,"%s": %f}`, metrics.ResponseTime.String(), responseTime, metrics.RequestCount.String(), requestCount, metrics.Throughput.String(), throughput)
+	json := fmt.Sprintf(`{"%s": %f,"%s": %f,"%s": %f, "%s": "%f"}`,
+		metrics.ResponseTime.String(), responseTime,
+		metrics.RequestCount.String(), requestCount,
+		metrics.Throughput.String(), throughput,
+		metrics.LocalResponseTime.String(), localResponseTime,
+	)
+
+	klog.Infof(json)
+	_, _ = fmt.Fprintf(res, "%s", json)
 }
 
 func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
@@ -163,13 +176,7 @@ func ForwardFunctionRequest(res http.ResponseWriter, req *http.Request) {
 
 	// Extract /function/<fns>/<fname>/...
 	path := strings.TrimPrefix(req.URL.Path, "/")
-	parts := strings.Split(path, "/")
-	if len(parts) >= 3 && parts[0] == "function" {
-		fns := parts[1]
-		fname := parts[2]
-		key := fns + "/" + fname
-		dagWindows.RecordResponseTime(key, delta.Milliseconds())
-	}
+	dependencyController.RecordResponseTime(path, delta.Milliseconds())
 }
 
 func getLocalResponseTime() float64 {
@@ -179,17 +186,12 @@ func getLocalResponseTime() float64 {
 		responseTime = 0
 	}
 
-	externalTime := float64(dagWindows.GetExternalResponeTime())
-	if math.IsNaN(externalTime) {
-		externalTime = 0
-	}
+	externalTime := dependencyController.GetExternalResponeTime()
 
 	localTime := responseTime - externalTime
 	if localTime <= 0 {
 		localTime = 0
 	}
-
-	klog.Infof("response time: %f (external: %f, local: %f)", responseTime, externalTime, localTime)
 
 	return localTime
 }

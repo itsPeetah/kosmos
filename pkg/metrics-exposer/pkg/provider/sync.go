@@ -15,9 +15,10 @@ import (
 
 // Metrics is the wrapper for Kubernetes resource metrics
 type Metrics struct {
-	ResponseTime *resource.Quantity
-	RequestCount *resource.Quantity
-	Throughput   *resource.Quantity
+	ResponseTime      *resource.Quantity
+	LocalResponseTime *resource.Quantity
+	RequestCount      *resource.Quantity
+	Throughput        *resource.Quantity
 }
 
 // updateMetrics updates the map of metrics
@@ -95,12 +96,14 @@ func (p *responseTimeMetricsProvider) updateMetrics() {
 		for name, serviceMetrics := range nestedMap {
 			// Compute average
 			responseTimeSum := 0
+			localResponseTimeSum := 0
 			requestCountSum := 0
 			throughputSum := 0
 
 			for _, metric := range serviceMetrics {
 				requests := metric.RequestCount.Value()
 				responseTimeSum += int(metric.ResponseTime.MilliValue()) * int(requests)
+				localResponseTimeSum += int(metric.LocalResponseTime.MilliValue()) * int(requests)
 				throughputSum += int(metric.Throughput.MilliValue()) * int(requests)
 				requestCountSum += int(requests)
 			}
@@ -108,19 +111,22 @@ func (p *responseTimeMetricsProvider) updateMetrics() {
 			var metricsValue *Metrics
 			if requestCountSum == 0 {
 				metricsValue = &Metrics{
-					ResponseTime: resource.NewQuantity(0, resource.BinarySI),
-					RequestCount: resource.NewQuantity(0, resource.BinarySI),
-					Throughput:   resource.NewQuantity(0, resource.BinarySI),
+					ResponseTime:      resource.NewQuantity(0, resource.BinarySI),
+					LocalResponseTime: resource.NewMilliQuantity(0, resource.BinarySI),
+					RequestCount:      resource.NewQuantity(0, resource.BinarySI),
+					Throughput:        resource.NewQuantity(0, resource.BinarySI),
 				}
 			} else {
 				averageResponseTime := resource.NewMilliQuantity(int64(responseTimeSum/requestCountSum), resource.BinarySI)
+				averageLocalResponseTime := resource.NewMilliQuantity(int64(localResponseTimeSum/requestCountSum), resource.BinarySI)
 				averageRequestCount := resource.NewQuantity(int64(requestCountSum), resource.BinarySI)
 				averageThroughput := resource.NewMilliQuantity(int64(throughputSum/requestCountSum), resource.BinarySI)
 
 				metricsValue = &Metrics{
-					ResponseTime: averageResponseTime,
-					RequestCount: averageRequestCount,
-					Throughput:   averageThroughput,
+					ResponseTime:      averageResponseTime,
+					LocalResponseTime: averageLocalResponseTime,
+					RequestCount:      averageRequestCount,
+					Throughput:        averageThroughput,
 				}
 			}
 			err = p.updateServiceMetric(name, namespace, metrics.ResponseTime, *metricsValue.ResponseTime)
@@ -153,9 +159,10 @@ func (p *responseTimeMetricsProvider) PodMetrics(pod *v1.Pod) (*Metrics, error) 
 	}
 
 	return &Metrics{
-		ResponseTime: resource.NewMilliQuantity(int64(value[metrics.ResponseTime.String()].(float64)), resource.BinarySI),
-		RequestCount: resource.NewQuantity(int64(value[metrics.RequestCount.String()].(float64)), resource.BinarySI),
-		Throughput:   resource.NewMilliQuantity(int64(value[metrics.Throughput.String()].(float64)), resource.BinarySI),
+		ResponseTime:      resource.NewMilliQuantity(int64(value[metrics.ResponseTime.String()].(float64)), resource.BinarySI),
+		LocalResponseTime: resource.NewMilliQuantity(int64(value[metrics.LocalResponseTime.String()].(float64)), resource.BinarySI),
+		RequestCount:      resource.NewQuantity(int64(value[metrics.RequestCount.String()].(float64)), resource.BinarySI),
+		Throughput:        resource.NewMilliQuantity(int64(value[metrics.Throughput.String()].(float64)), resource.BinarySI),
 	}, nil
 }
 

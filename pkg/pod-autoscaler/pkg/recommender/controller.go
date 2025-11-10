@@ -6,7 +6,6 @@ import (
 
 	"github.com/lterrac/system-autoscaler/pkg/informers"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
-	dependencycontroller "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/dependency-controller"
 	metricsgetter "github.com/lterrac/system-autoscaler/pkg/pod-autoscaler/pkg/metrics"
 	"github.com/lterrac/system-autoscaler/pkg/queue"
 	"k8s.io/apimachinery/pkg/labels"
@@ -63,9 +62,6 @@ type Controller struct {
 
 	// out is the output channel of the recommender.
 	out chan types.NodeScales
-
-	// dependency status is the shared status of the dependency graph controller
-	dependencyStatus *dependencycontroller.Status
 }
 
 // Status represents the state of the controller
@@ -81,7 +77,6 @@ func NewController(
 	metricsClient metricsgetter.MetricGetter,
 	informers informers.Informers,
 	out chan types.NodeScales,
-	dependencyStatus *dependencycontroller.Status,
 ) *Controller {
 
 	// Create event broadcaster
@@ -109,7 +104,6 @@ func NewController(
 		MetricClient:        metricsClient,
 		recorder:            recorder,
 		out:                 out,
-		dependencyStatus:    dependencyStatus,
 	}
 
 	klog.Info("Setting up event handlers")
@@ -230,8 +224,15 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		return nil, err
 	}
 
+	var metricType metrics.MetricType
+	if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
+		metricType = metrics.LocalResponseTime
+	} else {
+		metricType = metrics.ResponseTime
+	}
+
 	// Retrieve the respTime
-	respTime, err := c.MetricClient.PodMetrics(pod, metrics.ResponseTime)
+	respTime, err := c.MetricClient.PodMetrics(pod, metricType)
 	if err != nil {
 		return nil, fmt.Errorf("error: %s, failed to get metrics from pod with name %s and namespace %s from lister", err, pod.GetName(), pod.GetNamespace())
 	}
@@ -245,7 +246,6 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 		case v1beta1.AdaptiveGainControl:
 			logicInterface = newAdaptiveGainControlLogic(podScale)
 		case nptypes.DependencyAware:
-			// I'm using fixed gain now because the algo doesn't really change
 			logicInterface = newFixedGainControlLogic(podScale)
 		default:
 			logicInterface = newFixedGainControlLogic(podScale)
@@ -258,17 +258,6 @@ func (c *Controller) recommendContainer(podScale *v1beta1.PodScale) (*v1beta1.Po
 	if !ok {
 		return nil, fmt.Errorf("error: %s, failed to cast logic with name %s and namespace %s", err, podScale.Spec.SLA, podScale.Spec.Namespace)
 	}
-
-	// if sla.Spec.RecommenderLogic == nptypes.DependencyAware {
-	// 	// Get the approximated local response time for the pod
-	// 	extRespTime, err := c.MetricClient.PodMetrics(pod, metrics.Throughput) // don't ask :)
-	// 	if err != nil {
-	// 		extRespTime = &v1beta2.MetricValue{}
-	// 		extRespTime.Value.SetMilli(0)
-	// 	}
-	// 	lrtMilli := c.dependencyStatus.GetLocalResponseTimeMilli(podScale, respTime, extRespTime)
-	// 	respTime.Value.SetMilli(lrtMilli)
-	// }
 
 	// Compute the new resources
 	newPodScale, err := logic.computePodScale(pod, podScale, sla, respTime)

@@ -21,10 +21,11 @@ type Client struct {
 type MetricType string
 
 const (
-	ResponseTime MetricType = "response_time"
-	RequestCount MetricType = "request_count"
-	Throughput   MetricType = "throughput"
-	All          MetricType = ""
+	ResponseTime      MetricType = "response_time"
+	LocalResponseTime MetricType = "local_response_time"
+	RequestCount      MetricType = "request_count"
+	Throughput        MetricType = "throughput"
+	All               MetricType = ""
 )
 
 func (m MetricType) String() string {
@@ -55,6 +56,11 @@ func NewClient() *Client {
 // ResponseTime returns the average pod response time.
 func (c Client) ResponseTime(pod *v1.Pod) (map[string]interface{}, error) {
 	return c.getMetric(pod, ResponseTime)
+}
+
+// ResponseTime returns the average pod local response time.
+func (c Client) LocalResponseTime(pod *v1.Pod) (map[string]interface{}, error) {
+	return c.getMetric(pod, LocalResponseTime)
 }
 
 // RequestCount returns the average pod request within the current time window.
