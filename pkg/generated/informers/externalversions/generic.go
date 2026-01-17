@@ -5,6 +5,7 @@ package externalversions
 import (
 	"fmt"
 
+	v1alpha1 "github.com/lterrac/system-autoscaler/pkg/apis/neptuneplus/v1alpha1"
 	v1beta1 "github.com/lterrac/system-autoscaler/pkg/apis/systemautoscaler/v1beta1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
@@ -36,7 +37,11 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=systemautoscaler.polimi.it, Version=v1beta1
+	// Group=neptuneplus.polimi.it, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("dependencygraphs"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Neptuneplus().V1alpha1().DependencyGraphs().Informer()}, nil
+
+		// Group=systemautoscaler.polimi.it, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("podscales"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Systemautoscaler().V1beta1().PodScales().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("servicelevelagreements"):

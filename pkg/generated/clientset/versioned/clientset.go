@@ -5,6 +5,7 @@ package versioned
 import (
 	"fmt"
 
+	neptuneplusv1alpha1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/neptuneplus/v1alpha1"
 	systemautoscalerv1beta1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/systemautoscaler/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -13,6 +14,7 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	NeptuneplusV1alpha1() neptuneplusv1alpha1.NeptuneplusV1alpha1Interface
 	SystemautoscalerV1beta1() systemautoscalerv1beta1.SystemautoscalerV1beta1Interface
 }
 
@@ -20,7 +22,13 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
+	neptuneplusV1alpha1     *neptuneplusv1alpha1.NeptuneplusV1alpha1Client
 	systemautoscalerV1beta1 *systemautoscalerv1beta1.SystemautoscalerV1beta1Client
+}
+
+// NeptuneplusV1alpha1 retrieves the NeptuneplusV1alpha1Client
+func (c *Clientset) NeptuneplusV1alpha1() neptuneplusv1alpha1.NeptuneplusV1alpha1Interface {
+	return c.neptuneplusV1alpha1
 }
 
 // SystemautoscalerV1beta1 retrieves the SystemautoscalerV1beta1Client
@@ -49,6 +57,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
+	cs.neptuneplusV1alpha1, err = neptuneplusv1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 	cs.systemautoscalerV1beta1, err = systemautoscalerv1beta1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -65,6 +77,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
+	cs.neptuneplusV1alpha1 = neptuneplusv1alpha1.NewForConfigOrDie(c)
 	cs.systemautoscalerV1beta1 = systemautoscalerv1beta1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -74,6 +87,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.neptuneplusV1alpha1 = neptuneplusv1alpha1.New(c)
 	cs.systemautoscalerV1beta1 = systemautoscalerv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

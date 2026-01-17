@@ -4,6 +4,8 @@ package fake
 
 import (
 	clientset "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned"
+	neptuneplusv1alpha1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/neptuneplus/v1alpha1"
+	fakeneptuneplusv1alpha1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/neptuneplus/v1alpha1/fake"
 	systemautoscalerv1beta1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/systemautoscaler/v1beta1"
 	fakesystemautoscalerv1beta1 "github.com/lterrac/system-autoscaler/pkg/generated/clientset/versioned/typed/systemautoscaler/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,6 +61,11 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 }
 
 var _ clientset.Interface = &Clientset{}
+
+// NeptuneplusV1alpha1 retrieves the NeptuneplusV1alpha1Client
+func (c *Clientset) NeptuneplusV1alpha1() neptuneplusv1alpha1.NeptuneplusV1alpha1Interface {
+	return &fakeneptuneplusv1alpha1.FakeNeptuneplusV1alpha1{Fake: &c.Fake}
+}
 
 // SystemautoscalerV1beta1 retrieves the SystemautoscalerV1beta1Client
 func (c *Clientset) SystemautoscalerV1beta1() systemautoscalerv1beta1.SystemautoscalerV1beta1Interface {

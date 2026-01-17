@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"net/http"
@@ -11,12 +10,15 @@ import (
 	"os"
 	"time"
 
+	"k8s.io/klog/v2"
+
 	"github.com/asecurityteam/rolling"
 	"github.com/lterrac/system-autoscaler/pkg/metrics-exposer/pkg/metrics"
 )
 
 var target = &url.URL{}
 var window = &rolling.TimePolicy{}
+var reverseProxy = &httputil.ReverseProxy{}
 
 // Environment
 var address string
@@ -34,7 +36,7 @@ func main() {
 	mux.Handle("/", http.HandlerFunc(ForwardRequest))
 
 	address = os.Getenv("ADDRESS")
-	port = os.Getenv("PORT")
+	port = os.Getenv("APP_PORT")
 	windowSizeString := os.Getenv("WINDOW_SIZE")
 	windowGranularityString := os.Getenv("WINDOW_GRANULARITY")
 
@@ -46,6 +48,7 @@ func main() {
 		Handler: mux,
 	}
 	target, _ = url.Parse("http://" + address + ":" + port)
+	reverseProxy = httputil.NewSingleHostReverseProxy(target)
 	log.Println("Forwarding all requests to:", target)
 
 	windowSize, err = time.ParseDuration(windowSizeString)
@@ -71,7 +74,7 @@ func main() {
 // ForwardRequest send all the request the the pod except for the ones having metrics/ in the path
 func ForwardRequest(res http.ResponseWriter, req *http.Request) {
 	requestTime := time.Now()
-	httputil.NewSingleHostReverseProxy(target).ServeHTTP(res, req)
+	reverseProxy.ServeHTTP(res, req)
 	responseTime := time.Now()
 	delta := responseTime.Sub(requestTime)
 	window.Append(float64(delta.Milliseconds()))

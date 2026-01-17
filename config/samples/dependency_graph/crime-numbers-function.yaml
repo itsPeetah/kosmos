@@ -1,0 +1,87 @@
+apiVersion: openfaas.com/v1
+kind: Function
+metadata:
+  name: crime-numbers
+  namespace: openfaas-fn
+spec:
+  image: itspeetah/np-prime-numbers-go:latest
+  labels:
+    com.openfaas.scale.factor: "20"
+    com.openfaas.scale.max: "100"
+    com.openfaas.scale.min: "1"
+    com.openfaas.scale.zero: "false"
+    edgeautoscaler.polimi.it/scheduler: edge-autoscaler
+  name: crime-numbers
+  readOnlyRootFilesystem: false
+  limits:
+    cpu: "200m"
+    memory: "1000Mi"
+  requests:
+    cpu: "200m"
+    memory: "1000Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crime-numbers
+  labels:
+    name: crime-numbers
+  namespace: openfaas-fn
+spec:
+  ports:
+    - port: 80
+      targetPort: 8000
+  selector:
+    edgeautoscaler.polimi.it/function-name: "crime-numbers"
+    edgeautoscaler.polimi.it/function-namespace: "openfaas-fn"
+  # topologyKeys:
+  #   - "kubernetes.io/hostname"
+  #   - "*"
+
+---
+apiVersion: systemautoscaler.polimi.it/v1beta1
+kind: ServiceLevelAgreement
+metadata:
+  name: crime-numbers
+  namespace: openfaas-fn
+spec:
+  metric:
+    responseTime: 100m
+  defaultResources:
+    cpu: "300m"
+    memory: "768Mi"
+  minResources:
+    memory: 10Mi
+    cpu: 300m
+  maxResources:
+    memory: 2048Mi
+    cpu: 20000m
+  recommenderLogic: dependencyAware
+  service:
+    container: crime-numbers
+    selector:
+      matchLabels:
+        name: crime-numbers
+---
+apiVersion: neptuneplus.polimi.it/v1alpha1
+kind: DependencyGraph
+metadata:
+  labels:
+    app.kubernetes.io/name: cepdag-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: depdag-crime-numbers
+  namespace: openfaas-fn # Specify the namespace where you want to create this resource
+spec:
+  nodes:
+    - functionName: crime-numbers
+      functionNamespace: openfaas-fn
+      nominalResponseTime: 100m
+      invocations:
+        - functionName: grime-numbers
+          functionNamespace: openfaas-fn
+          edgeId: 1
+          edgeMultiplier: 1
+    - functionName: grime-numbers
+      functionNamespace: openfaas-fn
+      nominalResponseTime: 100m
+      invocations: []
